@@ -35,27 +35,27 @@
 ## ✨ Features
 
 ### ✂️ CapCut-Style Multi-Track Timeline & Editor
-- **Direct Timeline Manipulation**: Scrub the beat-marked ruler, zoom in/out, **Split at Playhead (`S`)**, drag **clip edge handles** to trim, duplicate or reorder clips, and click transition badges directly between slots (`cut`, `crossfade`, `flash-white`, `zoom-blur`, `slide-left`).
-- **Undo / Redo History**: Up to 40-step undo/redo stack (`Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z`) across splits, trims, overlays, stickers, and audio edits.
-- **Dedicated Multi-Lanes**: Visual video track, **Audio (`BGM / SFX / VO`)** lane with live SVG waveforms, **Text & Captions** lane, and **Stickers** lane.
-- **One-Tap Beat Sync**: Automatically align clip cuts to detected music beat markers (**Snap Beats**).
+- **Direct Timeline Manipulation**: Scrub the beat-marked ruler, zoom in/out, **Split at Playhead (`S`)**, drag **clip edge handles** to trim, duplicate or reorder clips, delete selected items (`Delete`/`Backspace`), and click transition badges directly between slots (`cut`, `crossfade`, `flash-white`, `zoom-blur`, `slide-left`).
+- **45-Step Gesture-Aware Undo / Redo**: Atomic undo/redo stack (`Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z`) where edge-trim drags, canvas moves, and slider sweeps record as single clean undo steps.
+- **Dedicated Multi-Lanes**: Visual video track, **Audio (`BGM / SFX / VO`)** lane with live SVG waveforms and `+ Add Music / SFX` trigger, **Text & Captions** lane, and **Stickers** lane.
+- **One-Tap Beat Sync & Auto BGM Fit**: Align clip cuts to music beat markers (**Snap Beats**) while automatically syncing BGM length when clips are added, split, or trimmed.
 
 ### 🎵 Music, SFX & Voiceover Studio
-- **Multi-Track Audio Mixing**: Layer background music (`bgm`), sound effects (`sfx`), and voiceovers (`voiceover`) simultaneously with per-track timeline placement, source trim offset, volume (`0–200%`), fade-in, and fade-out.
+- **Multi-Track Audio Mixing**: Layer background music (`bgm`), sound effects (`sfx`), and voiceovers (`voiceover`) simultaneously with per-track **Timeline Start**, **Song Start**, **Track Length**, **Volume (`0–200%`)**, **Fade In**, and **Fade Out**.
 - **Built-in Royalty-Free Audio**:
   - **3 Synthesized Music Tracks**: *Neon Drop (128 BPM Hype)*, *Siargao Sunset (92 BPM Chill)*, *Pulse Cut (135 BPM Montage)*.
   - **5 Sound Effects (SFX)**: *Transition Whoosh*, *Bass Boom Drop*, *CapCut Text Pop*, *Hype Riser*, *Camera Shutter*.
-- **In-Browser Voiceover Recorder**: Record directly from your phone or laptop mic via `MediaRecorder` and drop straight onto the timeline at the playhead.
+- **In-Browser Voiceover Recorder**: Record directly from your phone or laptop mic via `MediaRecorder` (`webm` / `m4a` / `ogg` auto-detected per browser) and drop straight onto the timeline at the playhead.
 - **Extract Audio from Video**: Strip audio from any uploaded video clip into a reusable music track (`FFmpeg` AAC extract).
 
 ### 🧩 Customizable & Reusable Cut Templates
-- **Use Template Slot Swapper**: Pick any preset or saved template, swap clips/photos into each labeled slot, customize hook texts and soundtrack, and open straight into the editor.
-- **Save Custom Templates**: Turn any edited timeline into a persistent reusable template saved on the server (`POST /api/templates`).
-- **Export / Import `.cutflow.json`**: Share or back up full edits and reusable template blueprints as portable JSON files.
+- **Use Template Slot Swapper**: Pick any preset or custom template (even before selecting AI clips), swap clips/photos into each labeled slot, customize hook texts and soundtrack, and open straight into the editor.
+- **Save Custom Templates (with Full Styling)**: Turn any edited timeline—including **stickers, reversed clips, color adjustments, and framing transforms**—into a persistent reusable template (`POST /api/templates`) compatible with both **Use Template** and **AI Fill**.
+- **Export / Import `.cutflow.json`**: Share or back up full edits and reusable template blueprints as portable JSON files with schema validation feedback.
 
 ### 🎨 Canvas Dragging, Color Grade, Speed/Reverse & Auto-Captions
-- **Direct Canvas Positioning**: Drag and select **Text Overlays** (`bold-hook`, `capcut-pop`, `minimal-caption`, `neon-badge`, custom colors & animations) and **Stickers** (*Hot / Fire*, *Sparkles*, *Heart*, *Look Here*, *REC Cam*, *VIP Star*) directly on the live preview stage.
-- **Color Adjust & Transform**: Fine-tune brightness, contrast, saturation, warmth, vignette, scale, X/Y offset, rotation, speed (`0.5x–2.5x`), and **Reverse Clip**.
+- **Direct Canvas Positioning**: Drag and select **Text Overlays** (`bold-hook`, `capcut-pop`, `minimal-caption`, `neon-badge`, custom colors & animations) and **Stickers** (*Hot / Fire*, *Sparkles*, *Heart*, *Look Here*, *REC Cam*, *VIP Star*) directly on the live preview stage without interrupting audio playback.
+- **Color Adjust, Transform & Photo Timing**: Fine-tune brightness, contrast, saturation, warmth, vignette, zoom scale, X/Y offset, rotation, clip speed (`0.5x–2.5x`), **Photo Duration (`0.6s–10s`)**, and **Reverse Clip** across any `0.4s–180s` timeline.
 - **AI Auto-Captions**: Generate timed speech/caption overlays from video or audio tracks using Gemini transcription with automatic offline fallback.
 
 ### 🤖 AI Prompt-to-Edit (English / Tagalog / Taglish)
@@ -91,6 +91,7 @@
 | `S` | Split clip at current playhead |
 | `Ctrl/Cmd + Z` | Undo last edit |
 | `Ctrl/Cmd + Shift + Z` | Redo edit |
+| `Delete` / `Backspace` | Delete selected text, sticker, audio track, or clip |
 
 </details>
 
