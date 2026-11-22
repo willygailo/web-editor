@@ -26,6 +26,7 @@
     <a href="#-how-to-use">How to Use</a> •
     <a href="#-cut-template-presets">Templates</a> •
     <a href="#-quick-start">Quick Start</a> •
+    <a href="#-api-key-and-model-setup">API Key &amp; Model Setup</a> •
     <a href="#-api-endpoints">API</a> •
     <a href="#-contributors">Contributors</a>
   </p>
@@ -175,17 +176,68 @@ pnpm dev
 
 ---
 
+## 🔑 API Key and Model Setup
+
+CutFlow AI works **even without any API key** using the built-in **Offline Smart Engine** (`ffprobe` + audio beat/silence detection). To unlock AI multimodal editing (**Claude** or **Gemini**) and AI **Auto Captions**, configure at least one provider using **Option A** (server `.env`) or **Option B** (browser Settings UI).
+
+### Option A: Using `.env` (Sets Both API Key & Model ID — Recommended)
+
+1. **Create your `.env` file** in the project root folder (never commit `.env` to Git):
+   ```bash
+   cp .env.example .env
+   ```
+2. **Open `.env`** and fill in the **API key** and **Model ID** for the provider(s) you want to use:
+   ```env
+   # --- Option 1: Anthropic Claude ---
+   ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+   ANTHROPIC_MODEL=claude-sonnet-5-5
+   # Only needed if using a user key (sk-ant-usr-*); leave blank for auto-discovery
+   ANTHROPIC_WORKSPACE_ID=
+
+   # --- Option 2: Google Gemini ---
+   GEMINI_API_KEY=AIza-your-gemini-key-here
+   GEMINI_MODEL=gemini-4-hydrogen
+   ```
+   - **Claude (`ANTHROPIC_MODEL`)**: Accepts `sk-ant-api03-*` (standard API keys) or `sk-ant-usr-*` (workspace is auto-discovered if `ANTHROPIC_WORKSPACE_ID` is blank). Set `ANTHROPIC_MODEL` to any valid Anthropic Messages model ID supported by your key (default: `claude-sonnet-5-5`).
+   - **Gemini (`GEMINI_MODEL`)**: Accepts Google AI Studio keys (`AIza...`). Used for multimodal video/image analysis in **Auto Edit** with your configured `GEMINI_MODEL` (default: `gemini-4-hydrogen`), and powers **Auto Captions** (`/api/media/:id/transcribe` using `gemini-4-hydrogen`).
+3. **Restart the dev server** so `.env` changes take effect (if `pnpm dev` is already running, press `Ctrl + C` and re-run):
+   ```bash
+   pnpm dev
+   ```
+4. **Verify in the studio**:
+   - Open `http://localhost:5173` and click the **Settings (`⚙️`)** icon in the top-right header (beside **Export**).
+   - Under **AI & Server Settings**, confirm the model ID shown and verify it displays **`Configured in .env`**.
+5. **Select the AI mode**:
+   - In **AI Auto-Cut Director**, pick **`Auto`** (uses **Claude** first → **Gemini** fallback → **Offline** fallback), or choose **`Claude 5.5`**, **`Gemini`**, or **`Offline`** directly.
+
+### Option B: In-App Browser Settings (Quick BYOK Key Entry — No `.env` Restart)
+
+Use this if you want to enter or override an API key directly from the browser without restarting the server:
+
+1. Click the **Settings (`⚙️`)** icon in the top-right header of CutFlow AI to open **AI & Server Settings**.
+2. Paste your key(s) into the optional fields:
+   - **Optional Browser Anthropic Key** (`sk-ant-api03-...` or `sk-ant-usr-...`)
+   - **Optional Anthropic Workspace ID** (`wrkspc_...`, leave blank to auto-detect for `sk-ant-usr-*` keys)
+   - **Optional Browser Gemini API Key** (`AIza...`)
+3. Click **Save**.
+
+> [!NOTE]
+> - **Priority & Privacy**: Keys saved in **Settings** stay only in your browser's `localStorage` and are sent via request headers (`x-anthropic-api-key`, `x-anthropic-workspace-id`, `x-gemini-api-key`), overriding server `.env` keys per request. Leave them blank to use `.env` or **Offline** mode.
+> - **Where Model IDs Live**: Changing Model IDs (`ANTHROPIC_MODEL` and `GEMINI_MODEL`) is done in `.env` (and displayed read-only inside **AI & Server Settings**).
+
+---
+
 ## ⚙️ Environment Variables
 
-Copy `.env.example` to `.env` (never commit `.env`). You can also enter optional browser BYOK keys in the **Settings** dialog inside the app.
+Full reference of variables supported in `.env` (see [`.env.example`](./.env.example)):
 
 | Variable | Default | Description |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | *(empty)* | Optional Anthropic key (`sk-ant-api03-*` or `sk-ant-usr-*`) |
-| `ANTHROPIC_MODEL` | `claude-sonnet-5-5` | Anthropic model used for AI Auto-Edit |
+| `ANTHROPIC_MODEL` | `claude-sonnet-5-5` | Anthropic model ID used for AI Auto-Edit |
 | `ANTHROPIC_WORKSPACE_ID` | *(auto)* | Optional workspace ID (auto-discovered for `sk-ant-usr-*` keys) |
 | `GEMINI_API_KEY` | *(empty)* | Optional Google Gemini API key |
-| `GEMINI_MODEL` | `gemini-4-hydrogen` | Gemini model used for multimodal video analysis & auto-captions |
+| `GEMINI_MODEL` | `gemini-4-hydrogen` | Gemini model ID used for AI Auto-Edit video/image analysis (`Auto Captions` uses `gemini-4-hydrogen`) |
 | `PORT` | `3001` | Fastify API server port |
 | `HOST` | `0.0.0.0` | Bind host (`0.0.0.0` enables mobile LAN access) |
 | `STORAGE_DIR` | `./data` | Upload, proxy, built-in audio/SFX, template, and render directory |
