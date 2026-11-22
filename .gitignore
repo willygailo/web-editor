@@ -5,9 +5,13 @@ node_modules/
 # Build, lint & cache outputs
 dist/
 build/
+dev-dist/
 *.tsbuildinfo
 .vite/
 .turbo/
+.cache/
+.temp/
+tmp/
 .eslintcache
 
 # Environment & Secrets (keep .env.example tracked)
@@ -25,6 +29,7 @@ assets.json
 templates.json
 *.wave-*.json
 sticker-*.svg
+gemini-*.mp4
 
 # User media, voiceover recordings, subtitles & exported templates
 *.mp4
@@ -48,19 +53,33 @@ sticker-*.svg
 # Tests & Coverage
 coverage/
 .vitest/
+test-results/
+playwright-report/
+blob-report/
 
-# Logs
+# Logs & Runtime PIDs
 *.log
+*.pid
 npm-debug.log*
+yarn-error.log*
 pnpm-debug.log*
+.pnpm-debug.log*
 
 # OS, temporary & Editor files
 .DS_Store
+._*
+.Spotlight-V100
+.Trashes
 Thumbs.db
+ehthumbs.db
+Desktop.ini
+desktop.ini
 *.tmp
 *.bak
 .vscode/*
 !.vscode/extensions.json
 .idea/
+.fleet/
+*.sublime-*
 *.swp
 *.swo

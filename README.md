@@ -5,9 +5,10 @@
     <strong>CapCut-Style AI Automated Video &amp; Cut-Template Studio for Phone &amp; Laptop</strong>
   </p>
   <p>
-    Turn raw clips into beat-synced reels using AI prompts (English, Tagalog, or Taglish) or customizable
-    CapCut-style Cut Templates — with a multi-track timeline, Music/SFX/Voiceover mixer, canvas text &amp;
-    sticker dragging, instant Canvas preview, and server-side FFmpeg MP4 export.
+    Turn raw clips into beat-synced social reels using platform-targeted AI prompts (English, Tagalog, or
+    Taglish) for <strong>TikTok, Instagram Reels/Feed (<code>4:5</code>), YouTube Shorts, &amp; Ads</strong> —
+    complete with 3-act pacing, timed SFX cues, safe-zone captions, ready-to-post hashtags, a multi-track
+    timeline, and server-side FFmpeg MP4 export.
   </p>
 
   <p>
@@ -70,15 +71,21 @@
 - **Save Custom Templates (with Full Styling)**: Turn any edited timeline—including **stickers, reversed clips, color adjustments, and framing transforms**—into a persistent reusable template (`POST /api/templates`) compatible with both **Use Template** and **AI Fill**.
 - **Export / Import `.cutflow.json`**: Share or back up full edits and reusable template blueprints as portable JSON files with schema validation feedback.
 
-### 🎨 Canvas Snapping, Safe Zones, Color Grade & Auto-Captions
-- **Direct Canvas Positioning, Snap & Safe Zones**: Drag **Text Overlays** (`bold-hook`, `capcut-pop`, `minimal-caption`, `neon-badge`), built-in **Stickers**, or **Custom Uploaded PNG/JPG Logo Stickers** on the live preview stage with magnetic **center-snap crosshairs** and a toggleable **Social Safe Zone** guide (TikTok/Reels/Shorts).
+### 🎨 Aspect Ratios (`9:16`, `4:5`, `16:9`, `1:1`), Safe Zones & Color Grade
+- **Full Social Format Matrix**: Switch cleanly between **`9:16`** (TikTok / Reels / Shorts), **`4:5`** (Instagram Feed portrait `1080×1350` / `720×900`), **`16:9`** (YouTube Landscape), and **`1:1`** (Square Promo Ads) with live preview & FFmpeg export scaling.
+- **Direct Canvas Positioning, Snap & Platform Safe Zones**: Drag **Text Overlays** (`bold-hook`, `capcut-pop`, `minimal-caption`, `neon-badge`), built-in **Stickers**, or **Custom Uploaded PNG/JPG Logo Stickers** on the live preview stage with magnetic **center-snap crosshairs** and aspect-aware **Social Safe Zone** guides.
 - **Color Adjust, Transform & Photo Timing**: Fine-tune brightness, contrast, saturation, warmth, vignette, zoom scale, X/Y offset, rotation, clip speed (`0.5x–2.5x`), **Photo Duration (`0.6s–10s`)**, and **Reverse Clip** across any `0.4s–180s` timeline.
 - **AI Auto-Captions**: Generate timed speech/caption overlays from video or audio tracks using Gemini transcription with automatic offline fallback.
 
-### 🤖 AI Prompt-to-Edit (English / Tagalog / Taglish)
-- **Claude Sonnet 5.5 (`claude-sonnet-5-5`)**: Inspects video keyframes and audio beat metadata via forced tool-use JSON, with automatic `anthropic-workspace-id` discovery for `sk-ant-usr-*` keys.
-- **Gemini Multimodal (`gemini-4-hydrogen`)**: Analyzes uploaded video proxies, images, beats, and speech via `@google/genai` `Interactions API`.
-- **Offline Smart Engine**: Works with **zero API keys** using `ffprobe`, `silencedetect`, PCM beat/energy peak detection, and English/Taglish keyword-to-template rules.
+### 🤖 Pro Social AI Director (English / Tagalog / Taglish)
+- **Platform Target Presets**: Target **`Auto`**, **`TikTok 9:16`**, **`IG Reels`**, **`IG Feed 4:5`**, **`YT Shorts`**, **`YT 16:9`**, or **`Promo 1:1`** directly from the AI bar to adapt pacing, transitions, framing, and caption placement automatically.
+- **3-Act Storytelling + Timed SFX + Color Polish**: Directs edits with a scroll-stop **Hook (0–2s) → Beat-Synced Body → Climax / CTA**, automatically layering timed built-in SFX (`whoosh`, `pop`, `bass-drop`, `riser`, `shutter`) and cohesive color adjustments.
+- **Silent B-Roll Highlight Detection (`visualHighlightsSec`)**: Runs fast FFmpeg scene-change probing (`gt(scene,0.18)`) on muted/ambient videos so AI directors pick the sharpest visual moments alongside audio energy peaks.
+- **UI Safe-Zone Clamping & Ready-to-Post Captions**: Keeps AI-generated vertical overlays inside platform safe zones (clearing TikTok/Reels bottom captions and action buttons), auto-skips quiet BGM intros, and generates copy-ready **`socialCaption` + `#hashtags`** right inside the Export modal.
+- **Three Interchangeable Engines**:
+  - **Claude Sonnet 5.5 (`claude-sonnet-5-5`)**: Forced tool-use EDL JSON with automatic `anthropic-workspace-id` discovery for `sk-ant-usr-*` keys.
+  - **Gemini Multimodal (`gemini-4-hydrogen`)**: Analyzes uploaded video proxies, images, beats, and speech via `@google/genai` `Interactions API`.
+  - **Offline Smart Engine**: Works with **zero API keys** using `ffprobe`, scene highlight detection, `silencedetect`, PCM beat/energy peak analysis, auto-SFX, and English/Taglish rules.
 
 ### 📱 Phone & Laptop PWA
 - **Phone**: CapCut-style single-row scrollable bottom tool bar (`AI Magic`, `Clips`, `Audio`, `Templates`, `Edit Clip`, `Adjust`, `Text`, `Stickers`), compact preview stage, safe-area insets, and **Add to Home Screen**.
@@ -92,12 +99,12 @@
 2. **Add Media**: Drag & drop videos/photos/audio into **Clips**, or tap **Demo Clips** to generate 3 animated sample videos immediately.
 3. **Create an Edit (2 Ways)**:
    - **Use a Cut Template**: Open **Templates → Use Template**, assign your clips to each blueprint slot, edit the hook caption & beat track, and click **Apply**.
-   - **AI Auto-Edit**: Select clips in the bin, write a prompt (e.g. *"Gawa ka ng hype 15s TikTok edit with smooth zoom"*), choose `Auto` / `Claude 5.5` / `Gemini` / `Offline`, and click **Auto Edit**.
+   - **AI Auto-Edit**: Select clips in the bin, pick a **Platform** target pill (`Auto`, `TikTok 9:16`, `IG Reels`, `IG Feed 4:5`, `YT Shorts`, `YT 16:9`, `Promo 1:1`), write a prompt (e.g. *"Gawa ka ng hype 15s TikTok viral hook edit with pop captions"*), choose `Auto` / `Claude 5.5` / `Gemini` / `Offline`, and click **Auto Edit**.
 4. **Fine-Tune Like CapCut**:
    - **Timeline**: Scrub to any timestamp and press **Split** (`S`), drag clip edges to trim duration, tap transition badges between clips, or click **Snap Beats**.
    - **Music & SFX**: Layer BGM, click **Listen** to check **Song Start** or tap **Skip Intro →** to jump past quiet intros, insert SFX hits at the playhead, record a **Voiceover**, or extract audio from a video clip.
-   - **Adjust, Text & Stickers**: Drag text or stickers right on the preview canvas, adjust color/transform/reverse, or run **Auto Captions**.
-5. **Save or Export**: Save your timeline under **Templates → Save**, export `.cutflow.json`, or click **Export** to verify attached audio tracks, render a standard `yuv420p` H.264/AAC MP4 (`720p` / `1080p`), and preview it right inside the Export modal before downloading.
+   - **Adjust, Text & Stickers**: Drag text or stickers right on the preview canvas, toggle **Safe Zones** (`9:16`, `4:5`, `16:9`, `1:1`), adjust color/transform/reverse, or run **Auto Captions**.
+5. **Save or Export**: Save your timeline under **Templates → Save**, export `.cutflow.json`, or click **Export** to verify attached audio tracks, **copy your AI-generated Ready-to-Post Caption & Hashtags**, render a standard `yuv420p` H.264/AAC MP4 (`720p` / `1080p`), and preview it right inside the Export modal before downloading.
 
 <details>
 <summary><strong>⌨️ Desktop Keyboard Shortcuts</strong></summary>
@@ -123,6 +130,9 @@
 | `beat-flash` | **Beat Flash Sync** | `9:16` | `9s` | `135 BPM` | 6 slots · `punch-zoom`, `flash-white`, `neon-badge` |
 | `cinematic-story` | **Cinematic Story** | `16:9` | `14s` | `80 BPM` | 4 slots · `zoom-out`, `pan-left`, `crossfade`, `cinematic` |
 | `product-showcase` | **Smart Product Ad** | `1:1` | `10s` | `118 BPM` | 4 slots · `slide-left`, `zoom-blur`, `capcut-pop` |
+| `tiktok-viral-hook` | **TikTok Hook & SFX** | `9:16` | `11s` | `128 BPM` | 5 slots · `punch-zoom`, `zoom-blur`, `flash-white`, `bold-hook` |
+| `ig-feed-aesthetic` | **IG Feed 4:5 Portrait** | `4:5` | `12s` | `92 BPM` | 4 slots · `zoom-in`/`pan-right`/`pan-left`, `crossfade`, `warm-film` |
+| `yt-shorts-explainer` | **Shorts Fast Story** | `9:16` | `13s` | `128 BPM` | 4 slots · `punch-zoom`, `slide-left`, `flash-white`, `neon-badge` |
 
 > Every built-in preset also serves as a **slot blueprint** when opened via **Use Template**, and you can save your own custom templates alongside them.
 
@@ -134,8 +144,8 @@
 flowchart LR
     UI["Phone &amp; Laptop PWA (React 19 + Undo/Redo Store)"]
     API["Fastify 5 Server (:3001)"]
-    Probe["FFprobe, Waveform Peaks &amp; Silence Analyzer"]
-    AI["Claude Sonnet 5.5 / Gemini 4 Hydrogen / Offline Smart Fallback"]
+    Probe["FFprobe, Scene Highlights, Waveform Peaks &amp; Silence Analyzer"]
+    AI["Pro Social Director (Claude 5.5 / Gemini 4 / Offline 3-Act + SFX)"]
     TPL["Built-in &amp; Custom Cut Templates Store"]
     EDL["Unified CutProject EDL (Zod + Sanitizer)"]
     Preview["Browser 2-Channel Canvas + Interactive Text/Sticker Stage"]
@@ -302,7 +312,7 @@ Full reference of variables supported in `.env` (see [`.env.example`](./.env.exa
 
 - `GET /api/health` — Server FFmpeg & AI provider readiness
 - `GET /api/media` — List uploaded & built-in clips, BGM, and SFX assets
-- `POST /api/media/upload` — Multipart video/image/audio/voiceover upload + `ffprobe` & beat analysis
+- `POST /api/media/upload` — Multipart video/image/audio/voiceover upload + `ffprobe`, beat, & visual scene highlight analysis
 - `POST /api/media/sample-pack` — Generate 3 animated demo video clips via FFmpeg
 - `GET /api/media/:id/stream` — HTTP `206` byte-range streaming for smooth mobile seeking
 - `GET /api/media/:id/thumb` — Cached JPEG thumbnail
@@ -313,7 +323,7 @@ Full reference of variables supported in `.env` (see [`.env.example`](./.env.exa
 - `GET /api/templates` — List built-in and saved custom Cut Templates
 - `POST /api/templates` — Save a custom Cut Template preset
 - `DELETE /api/templates/:id` — Delete a saved custom template
-- `POST /api/projects/auto-edit` — Generate or refine a `CutProject` EDL (`auto`, `claude`, `gemini`, `offline`)
+- `POST /api/projects/auto-edit` — Generate or refine a platform-targeted `CutProject` EDL with SFX cues & social captions (`auto`, `claude`, `gemini`, `offline`)
 - `POST /api/render` — Enqueue server-side FFmpeg MP4 render (`720p` or `1080p`)
 - `GET /api/render/:id` / `GET /api/render/:id/events` — Poll or stream render job progress via SSE
 - `GET /api/render/:id/download` — Download rendered MP4
