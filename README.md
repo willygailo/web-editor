@@ -37,11 +37,13 @@
 ### ✂️ CapCut-Style Multi-Track Timeline & Editor
 - **Direct Timeline Manipulation**: Scrub the beat-marked ruler, zoom in/out, **Split at Playhead (`S`)**, drag **clip edge handles** to trim, duplicate or reorder clips, delete selected items (`Delete`/`Backspace`), and click transition badges directly between slots (`cut`, `crossfade`, `flash-white`, `zoom-blur`, `slide-left`).
 - **45-Step Gesture-Aware Undo / Redo**: Atomic undo/redo stack (`Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z`) where edge-trim drags, canvas moves, and slider sweeps record as single clean undo steps.
-- **Dedicated Multi-Lanes**: Visual video track, **Audio (`BGM / SFX / VO`)** lane with live SVG waveforms and `+ Add Music / SFX` trigger, **Text & Captions** lane, and **Stickers** lane.
+- **Dedicated Multi-Lanes**: Visual video track, **Audio (`BGM / SFX / VO`)** lane with live offset-synced SVG waveforms and `+ Add Music / SFX` trigger, **Text & Captions** lane, and **Stickers** lane.
 - **One-Tap Beat Sync & Auto BGM Fit**: Align clip cuts to music beat markers (**Snap Beats**) while automatically syncing BGM length when clips are added, split, or trimmed.
 
 ### 🎵 Music, SFX & Voiceover Studio
 - **Multi-Track Audio Mixing**: Layer background music (`bgm`), sound effects (`sfx`), and voiceovers (`voiceover`) simultaneously with per-track **Timeline Start**, **Song Start**, **Track Length**, **Volume (`0–200%`)**, **Fade In**, and **Fade Out**.
+- **Audio Audition & 1-Tap Intro Skip**: Preview any library song or listen right from your current `Song Start` offset (**Listen / Stop**), automatically skip leading dead silence, or hit **Skip Intro →** to jump straight to the song's first beat drop.
+- **Auto-Attach & Remix Preservation**: Songs uploaded via **Clips** or **Music & SFX** (even before creating a timeline via **Pick Song**) automatically follow into your first clip, **Use Template**, or **Auto Edit**, while AI **Remix** preserves custom BGM offsets, volumes, SFX, and voiceovers.
 - **Built-in Royalty-Free Audio**:
   - **3 Synthesized Music Tracks**: *Neon Drop (128 BPM Hype)*, *Siargao Sunset (92 BPM Chill)*, *Pulse Cut (135 BPM Montage)*.
   - **5 Sound Effects (SFX)**: *Transition Whoosh*, *Bass Boom Drop*, *CapCut Text Pop*, *Hype Riser*, *Camera Shutter*.
@@ -49,7 +51,7 @@
 - **Extract Audio from Video**: Strip audio from any uploaded video clip into a reusable music track (`FFmpeg` AAC extract).
 
 ### 🧩 Customizable & Reusable Cut Templates
-- **Use Template Slot Swapper**: Pick any preset or custom template (even before selecting AI clips), swap clips/photos into each labeled slot, customize hook texts and soundtrack, and open straight into the editor.
+- **Use Template Slot Swapper**: Pick any preset or custom template (even before selecting AI clips), swap clips/photos into each labeled slot, customize hook texts and soundtrack (preserving any music you already picked), and open straight into the editor.
 - **Save Custom Templates (with Full Styling)**: Turn any edited timeline—including **stickers, reversed clips, color adjustments, and framing transforms**—into a persistent reusable template (`POST /api/templates`) compatible with both **Use Template** and **AI Fill**.
 - **Export / Import `.cutflow.json`**: Share or back up full edits and reusable template blueprints as portable JSON files with schema validation feedback.
 
@@ -78,9 +80,9 @@
    - **AI Auto-Edit**: Select clips in the bin, write a prompt (e.g. *"Gawa ka ng hype 15s TikTok edit with smooth zoom"*), choose `Auto` / `Claude 5.5` / `Gemini` / `Offline`, and click **Auto Edit**.
 4. **Fine-Tune Like CapCut**:
    - **Timeline**: Scrub to any timestamp and press **Split** (`S`), drag clip edges to trim duration, tap transition badges between clips, or click **Snap Beats**.
-   - **Music & SFX**: Layer BGM, insert SFX hits at the playhead, record a **Voiceover**, or extract audio from a video clip.
+   - **Music & SFX**: Layer BGM, click **Listen** to check **Song Start** or tap **Skip Intro →** to jump past quiet intros, insert SFX hits at the playhead, record a **Voiceover**, or extract audio from a video clip.
    - **Adjust, Text & Stickers**: Drag text or stickers right on the preview canvas, adjust color/transform/reverse, or run **Auto Captions**.
-5. **Save or Export**: Save your timeline under **Templates → Save**, export `.cutflow.json`, or click **Export** to render a crisp `720p` / `1080p` H.264/AAC MP4 (`9:16`, `16:9`, or `1:1`).
+5. **Save or Export**: Save your timeline under **Templates → Save**, export `.cutflow.json`, or click **Export** to verify attached audio tracks, render a standard `yuv420p` H.264/AAC MP4 (`720p` / `1080p`), and preview it right inside the Export modal before downloading.
 
 <details>
 <summary><strong>⌨️ Desktop Keyboard Shortcuts</strong></summary>
