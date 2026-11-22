@@ -5,8 +5,9 @@ import { afterAll, describe, expect, it } from "vitest";
 import { CutProjectSchema, type MediaAsset } from "@cutflow/shared";
 import { generateOfflineCutProject } from "./ai/offline.js";
 import { runProcess } from "./media/exec.js";
+import { MediaStore } from "./media/store.js";
 import { probeMediaFile } from "./media/probe.js";
-import { buildFfmpegRenderPlan } from "./render/ffmpegGraph.js";
+import { buildFfmpegRenderPlan, escapeFfmpegFilterPath } from "./render/ffmpegGraph.js";
 import { generateAssSubtitles } from "./render/subtitles.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "cutflow test "));
@@ -473,6 +474,11 @@ describe("Offline AI Director & FFmpeg Render Pipeline", () => {
       builtinsDir,
     });
 
+    const filterComplexArg = plan.args[plan.args.indexOf("-filter_complex") + 1] ?? "";
+    expect(plan.args.some((a) => a.endsWith("sticker-fire.png"))).toBe(true);
+    expect(filterComplexArg).toContain("ass=filename=");
+    expect(filterComplexArg).toContain(":fontsdir=");
+
     const renderRes = await runProcess("ffmpeg", plan.args, { timeoutMs: 60_000 });
     expect(renderRes.code, renderRes.stderr).toBe(0);
     const outProbe = await probeMediaFile(outPath, "video");
@@ -655,4 +661,139 @@ describe("Offline AI Director & FFmpeg Render Pipeline", () => {
     ]);
     expect(probe.stdout.trim()).toBe("yuv420p");
   }, 60_000);
+});
+
+describe("Cross-Platform Compatibility (Windows / macOS / Linux)", () => {
+  it("escapes Windows drive letters, brackets, commas, semicolons, and apostrophes in FFmpeg ass filter paths", () => {
+    const winAss = "C:\\Users\\O'Connor [dev]\\cutflow,1\\renders\\sub;v1.ass";
+    const winFonts = "C:\\Users\\O'Connor [dev]\\cutflow\\fonts";
+    expect(escapeFfmpegFilterPath(winAss)).toBe(
+      "'C\\:/Users/O'\\\\\\''Connor [dev]/cutflow,1/renders/sub;v1.ass'"
+    );
+
+    const imgAsset: MediaAsset = {
+      id: "win-img",
+      filename: "photo.png",
+      originalName: "Photo",
+      kind: "image",
+      mimeType: "image/png",
+      url: "/api/media/win-img/stream",
+      durationSec: 5,
+      width: 720,
+      height: 1280,
+      hasAudio: false,
+      beatMarkersSec: [],
+      energyPeaksSec: [],
+      silenceRanges: [],
+      isBuiltIn: false,
+    };
+
+    const plan = buildFfmpegRenderPlan({
+      project: CutProjectSchema.parse({
+        id: "p-win",
+        title: "Win Plan",
+        templateId: "hype-zoom",
+        promptUsed: "win test",
+        modeUsed: "template",
+        aspectRatio: "9:16",
+        fps: 30,
+        targetDurationSec: 2,
+        clips: [
+          {
+            id: "c1",
+            assetId: "win-img",
+            sourceStartSec: 0,
+            sourceEndSec: 2,
+            speed: 1,
+            motion: "none",
+            transitionIn: "cut",
+            transitionDurationSec: 0,
+            filter: "none",
+            muteOriginalAudio: true,
+            volume: 0,
+          },
+        ],
+        overlays: [
+          {
+            id: "ov1",
+            text: "HELLO WINDOWS",
+            startSec: 0,
+            endSec: 1.5,
+            position: "center",
+            style: "bold-hook",
+            scale: 1,
+            rotationDeg: 0,
+            animation: "none",
+          },
+        ],
+        stickers: [
+          {
+            id: "stk-win",
+            stickerId: "sparkles",
+            startSec: 0,
+            endSec: 1.5,
+            xNorm: 0.5,
+            yNorm: 0.3,
+            scale: 1,
+            rotationDeg: 0,
+          },
+        ],
+      }),
+      quality: "720p",
+      assetsById: new Map([[imgAsset.id, imgAsset]]),
+      filePathsById: new Map([[imgAsset.id, "C:\\media\\photo.png"]]),
+      outputPath: "C:\\renders\\out.mp4",
+      assSubtitlePath: winAss,
+      fontsDir: winFonts,
+    });
+
+    const fc = plan.args[plan.args.indexOf("-filter_complex") + 1] ?? "";
+    expect(fc).toContain(`ass=filename=${escapeFfmpegFilterPath(winAss)}:fontsdir=${escapeFfmpegFilterPath(winFonts)}`);
+    expect(plan.args.some((arg) => arg.endsWith("sticker-sparkles.png"))).toBe(true);
+  });
+
+  it("recovers portable MediaStore asset paths across moved or cross-OS storage directories", () => {
+    const portableRoot = path.join(tempRoot, "portable-data");
+    const uploadsDir = path.join(portableRoot, "uploads");
+    const proxiesDir = path.join(portableRoot, "proxies");
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    fs.mkdirSync(proxiesDir, { recursive: true });
+
+    const targetVideo = path.join(uploadsDir, "clip-portable.mp4");
+    const targetThumb = path.join(proxiesDir, "portable-1.jpg");
+    fs.writeFileSync(targetVideo, "video-bytes");
+    fs.writeFileSync(targetThumb, "thumb-bytes");
+
+    const dbPath = path.join(portableRoot, "assets.json");
+    fs.writeFileSync(
+      dbPath,
+      JSON.stringify([
+        {
+          asset: {
+            id: "portable-1",
+            filename: "clip-portable.mp4",
+            originalName: "Portable Clip",
+            kind: "video",
+            mimeType: "video/mp4",
+            url: "/api/media/portable-1/stream",
+            thumbnailUrl: "/api/media/portable-1/thumb",
+            durationSec: 4,
+            hasAudio: true,
+            beatMarkersSec: [],
+            energyPeaksSec: [],
+            silenceRanges: [],
+            isBuiltIn: false,
+          },
+          filePath: "C:\\OldMachine\\web editor\\data\\uploads\\clip-portable.mp4",
+          thumbPath: "C:\\OldMachine\\web editor\\data\\proxies\\portable-1.jpg",
+        },
+      ])
+    );
+
+    const store = new MediaStore(dbPath);
+    const loaded = store.get("portable-1");
+    expect(loaded).toBeDefined();
+    expect(loaded?.filePath).toBe(targetVideo);
+    expect(loaded?.thumbPath).toBe(targetThumb);
+  });
 });

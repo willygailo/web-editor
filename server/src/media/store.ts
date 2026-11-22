@@ -1,10 +1,36 @@
 import fs from "node:fs";
+import path from "node:path";
 import type { MediaAsset } from "@cutflow/shared";
 
 interface StoredEntry {
   asset: MediaAsset;
   filePath: string;
   thumbPath?: string;
+}
+
+function crossPlatformBasename(filePath: string): string {
+  const parts = filePath.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] ?? "";
+}
+
+function resolveStoredFilePath(
+  storedPath: string | undefined,
+  fallbackDirs: string[],
+  fallbackFilename?: string
+): string | undefined {
+  if (!storedPath) return undefined;
+  if (fs.existsSync(storedPath)) return storedPath;
+
+  const names = [crossPlatformBasename(storedPath), fallbackFilename].filter(
+    (name): name is string => Boolean(name)
+  );
+  for (const name of names) {
+    for (const dir of fallbackDirs) {
+      const candidate = path.join(dir, name);
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  }
+  return undefined;
 }
 
 export class MediaStore {
@@ -16,13 +42,35 @@ export class MediaStore {
 
   private load(): void {
     if (!fs.existsSync(this.dbPath)) return;
+    const storageDir = path.dirname(this.dbPath);
+    const mediaFallbackDirs = [
+      path.join(storageDir, "uploads"),
+      path.join(storageDir, "builtins"),
+    ];
+    const thumbFallbackDirs = [path.join(storageDir, "proxies")];
+
     try {
       const raw = fs.readFileSync(this.dbPath, "utf8");
       const items = JSON.parse(raw) as StoredEntry[];
       for (const entry of items) {
-        if (entry?.asset?.id && fs.existsSync(entry.filePath)) {
-          this.entries.set(entry.asset.id, entry);
-        }
+        if (!entry?.asset?.id) continue;
+        const resolvedFile = resolveStoredFilePath(
+          entry.filePath,
+          mediaFallbackDirs,
+          entry.asset.filename
+        );
+        if (!resolvedFile) continue;
+
+        const resolvedThumb = resolveStoredFilePath(
+          entry.thumbPath,
+          thumbFallbackDirs,
+          `${entry.asset.id}.jpg`
+        );
+        this.entries.set(entry.asset.id, {
+          asset: entry.asset,
+          filePath: resolvedFile,
+          thumbPath: resolvedThumb,
+        });
       }
     } catch {
       // Corrupt or empty db; start clean

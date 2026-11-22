@@ -89,6 +89,8 @@ export class RenderJobQueue {
         outputPath,
         assSubtitlePath: activeAssPath,
         builtinsDir: this.config.builtinsDir,
+        stickersDir: fs.existsSync(this.config.stickersDir) ? this.config.stickersDir : undefined,
+        fontsDir: fs.existsSync(this.config.fontsDir) ? this.config.fontsDir : undefined,
       });
 
       const layout = computeTimelineLayout(project);

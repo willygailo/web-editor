@@ -30,8 +30,11 @@ function parseFrameRate(raw?: string): number | undefined {
 
 export async function checkFfmpegAvailable(): Promise<boolean> {
   try {
-    const res = await runProcess("ffmpeg", ["-version"], { timeoutMs: 3000 });
-    return res.code === 0;
+    const [ffmpegRes, ffprobeRes] = await Promise.all([
+      runProcess("ffmpeg", ["-version"], { timeoutMs: 3000 }),
+      runProcess("ffprobe", ["-version"], { timeoutMs: 3000 }),
+    ]);
+    return ffmpegRes.code === 0 && ffprobeRes.code === 0;
   } catch {
     return false;
   }

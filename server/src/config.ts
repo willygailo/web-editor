@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { getFfmpegBin, getFfprobeBin } from "./media/exec.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(__dirname, "../..");
@@ -39,6 +40,10 @@ export interface ServerConfig {
   proxiesDir: string;
   rendersDir: string;
   builtinsDir: string;
+  fontsDir: string;
+  stickersDir: string;
+  ffmpegPath: string;
+  ffprobePath: string;
   assetsDbPath: string;
   templatesDbPath: string;
   geminiApiKey: string;
@@ -74,6 +79,10 @@ export function getConfig(): ServerConfig {
     proxiesDir,
     rendersDir,
     builtinsDir,
+    fontsDir: path.join(REPO_ROOT, "server", "assets", "fonts"),
+    stickersDir: path.join(REPO_ROOT, "server", "assets", "stickers"),
+    ffmpegPath: getFfmpegBin(),
+    ffprobePath: getFfprobeBin(),
     assetsDbPath: path.join(storageDir, "assets.json"),
     templatesDbPath: path.join(storageDir, "templates.json"),
     geminiApiKey: (process.env.GEMINI_API_KEY || "").trim(),

@@ -1,0 +1,16 @@
+# Enforce consistent line endings across Windows, macOS, and Linux
+* text=auto eol=lf
+
+# Binary media & font assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.mp4 binary
+*.m4a binary
+*.wav binary
+*.mp3 binary
+*.ttf binary
+*.woff binary
+*.woff2 binary

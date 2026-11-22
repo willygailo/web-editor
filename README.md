@@ -157,21 +157,48 @@ flowchart LR
 
 ## 🚀 Quick Start
 
+Runs natively on **Windows (10/11)**, **macOS (Apple Silicon & Intel)**, and **Linux** (plus Android/iOS mobile browsers over LAN).
+
 ### Prerequisites
 - **Node.js** `>= 22`
-- **pnpm**
-- **FFmpeg** & **ffprobe** available in `PATH`
+- **pnpm** (`corepack enable` or `npm install -g pnpm`)
+- **FFmpeg** & **ffprobe** available in `PATH` (or configured via `FFMPEG_PATH` / `FFPROBE_PATH`)
+
+<details>
+<summary><strong>💻 OS-Specific Install Commands (Windows, macOS &amp; Linux)</strong></summary>
+
+- **Windows (PowerShell)**:
+  ```powershell
+  winget install OpenJS.NodeJS.LTS Gyan.FFmpeg
+  npm install -g pnpm
+  ```
+  *(Restart PowerShell afterward so `ffmpeg`, `ffprobe`, and `pnpm` are refreshed in `PATH`. If FFmpeg was unzipped manually, set `FFMPEG_PATH=C:\ffmpeg\bin\ffmpeg.exe` in `.env`.)*
+- **macOS (Homebrew)**:
+  ```bash
+  brew install node ffmpeg pnpm
+  ```
+- **Ubuntu / Debian Linux**:
+  ```bash
+  sudo apt update && sudo apt install -y ffmpeg
+  # Install Node.js >= 22 (e.g. via NodeSource or nvm), then:
+  npm install -g pnpm
+  ```
+
+</details>
 
 ### Installation & Run
 
 ```bash
+# macOS / Linux / Windows PowerShell:
 cp .env.example .env
+# Windows Command Prompt (cmd.exe): copy .env.example .env
+
 pnpm install
 pnpm dev
 ```
 
 - **Laptop**: Open `http://localhost:5173`
-- **Phone (same Wi-Fi)**: Open `http://<your-laptop-lan-ip>:5173` in Chrome/Safari and choose **Add to Home Screen**.
+- **Phone (same Wi-Fi)**: Open `http://<your-laptop-lan-ip>:5173` in Chrome/Safari and choose **Add to Home Screen** *(on Windows, allow Node.js through Windows Defender Firewall when prompted)*.
 - **Try Immediately Without Own Clips**: Tap **Demo Clips** → open **Templates** or **AI Magic** → **Use Template** / **Auto Edit** → edit timeline/audio → **Export**.
 
 ---
@@ -242,6 +269,8 @@ Full reference of variables supported in `.env` (see [`.env.example`](./.env.exa
 | `HOST` | `0.0.0.0` | Bind host (`0.0.0.0` enables mobile LAN access) |
 | `STORAGE_DIR` | `./data` | Upload, proxy, built-in audio/SFX, template, and render directory |
 | `MAX_UPLOAD_MB` | `500` | Maximum upload file size per file |
+| `FFMPEG_PATH` | `ffmpeg` | Optional custom path to `ffmpeg` executable (e.g. `C:\ffmpeg\bin\ffmpeg.exe`) |
+| `FFPROBE_PATH` | `ffprobe` | Optional custom path to `ffprobe` executable (defaults cleanly next to `FFMPEG_PATH`) |
 
 ---
 

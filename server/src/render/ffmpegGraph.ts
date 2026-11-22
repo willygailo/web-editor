@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   computeTimelineLayout,
   getAspectDimensions,
@@ -14,6 +15,13 @@ import {
   type TransitionType,
 } from "@cutflow/shared";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function resolveDefaultAssetsSubdir(subdir: "fonts" | "stickers"): string | undefined {
+  const dir = path.resolve(__dirname, "../../assets", subdir);
+  return fs.existsSync(dir) ? dir : undefined;
+}
+
 export interface BuildRenderPlanInput {
   project: CutProject;
   quality: "720p" | "1080p";
@@ -22,6 +30,8 @@ export interface BuildRenderPlanInput {
   outputPath: string;
   assSubtitlePath?: string;
   builtinsDir?: string;
+  stickersDir?: string;
+  fontsDir?: string;
 }
 
 export interface FfmpegRenderPlan {
@@ -181,12 +191,9 @@ function buildAtempoChain(speed: number): string[] {
   return ["atempo=2.0", `atempo=${(speed / 2).toFixed(3)}`];
 }
 
-function escapeFfmpegFilterPath(filePath: string): string {
-  return filePath
-    .replace(/\\/g, "\\\\")
-    .replace(/:/g, "\\:")
-    .replace(/'/g, "\\'")
-    .replace(/ /g, "\\ ");
+export function escapeFfmpegFilterPath(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, "/");
+  return `'${normalized.replace(/'/g, "'\\\\\\''").replace(/:/g, "\\:")}'`;
 }
 
 export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRenderPlan {
@@ -198,6 +205,8 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
     outputPath,
     assSubtitlePath,
     builtinsDir,
+    stickersDir = resolveDefaultAssetsSubdir("stickers"),
+    fontsDir = resolveDefaultAssetsSubdir("fonts"),
   } = input;
   const { width, height } = getAspectDimensions(project.aspectRatio, quality);
   const fps = project.fps || 30;
@@ -307,10 +316,9 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
   let nextInputIdx = layout.slots.length;
   const finalTotalSec = Math.max(0.5, Number(currentDuration.toFixed(3)));
 
-  // 3. Composite SVG stickers if present
+  // 3. Composite stickers (prefer bundled RGBA PNGs so FFmpeg doesn't require librsvg)
   const stickers = project.stickers || [];
-  if (stickers.length > 0 && builtinsDir) {
-    fs.mkdirSync(builtinsDir, { recursive: true });
+  if (stickers.length > 0 && (stickersDir || builtinsDir)) {
     stickers.forEach((st, idx) => {
       if (st.startSec >= finalTotalSec) return;
       const start = Math.max(0, st.startSec);
@@ -318,9 +326,21 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
       if (end <= start) return;
 
       const item = getStickerById(st.stickerId);
-      const svgPath = path.join(builtinsDir, `sticker-${item.id}.svg`);
-      if (!fs.existsSync(svgPath)) {
-        fs.writeFileSync(svgPath, item.svg, "utf8");
+      const bundledPngPath = stickersDir
+        ? path.join(stickersDir, `sticker-${item.id}.png`)
+        : undefined;
+
+      let stickerInputPath: string | undefined =
+        bundledPngPath && fs.existsSync(bundledPngPath) ? bundledPngPath : undefined;
+
+      if (!stickerInputPath) {
+        if (!builtinsDir) return;
+        fs.mkdirSync(builtinsDir, { recursive: true });
+        const svgPath = path.join(builtinsDir, `sticker-${item.id}.svg`);
+        if (!fs.existsSync(svgPath)) {
+          fs.writeFileSync(svgPath, item.svg, "utf8");
+        }
+        stickerInputPath = svgPath;
       }
 
       const stickerIn = nextInputIdx++;
@@ -332,7 +352,7 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
         "-t",
         String(finalTotalSec),
         "-i",
-        svgPath
+        stickerInputPath
       );
 
       const targetStickerW = Math.max(48, Math.round((width * 0.22 * st.scale) / 2) * 2);
@@ -354,9 +374,11 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
 
   // 4. Burn in ASS subtitles/text overlays if present
   if (assSubtitlePath && project.overlays.length > 0) {
-    filterParts.push(
-      `[${currentVideoLabel}]ass=${escapeFfmpegFilterPath(assSubtitlePath)}[vout]`
-    );
+    const assOptions = [`filename=${escapeFfmpegFilterPath(assSubtitlePath)}`];
+    if (fontsDir) {
+      assOptions.push(`fontsdir=${escapeFfmpegFilterPath(fontsDir)}`);
+    }
+    filterParts.push(`[${currentVideoLabel}]ass=${assOptions.join(":")}[vout]`);
     currentVideoLabel = "vout";
   }
 
