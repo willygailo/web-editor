@@ -369,6 +369,27 @@ export class PreviewCompositor {
   ): void {
     const tracks = project ? getProjectAudioTracks(project) : [];
     const activeIds = new Set(tracks.map((t) => t.id));
+    const layout = project ? computeTimelineLayout(project) : null;
+    const activeSlot = layout
+      ? layout.slots.find((s) => timelineSec >= s.timelineStartSec && timelineSec <= s.timelineEndSec)
+      : undefined;
+    const activeSlotAsset = activeSlot ? assetsById.get(activeSlot.slot.assetId) : undefined;
+    const hasVoiceTrackNow = tracks.some((tr) => {
+      if (tr.kind !== "voiceover" || tr.volume <= 0.05) return false;
+      const trAsset = assetsById.get(tr.assetId);
+      const st = tr.timelineStartSec ?? 0;
+      const dur = tr.durationSec ?? trAsset?.durationSec ?? 0;
+      return timelineSec >= st && timelineSec <= st + dur;
+    });
+    const hasUnmutedClipAudio = Boolean(
+      activeSlot &&
+        activeSlotAsset?.kind === "video" &&
+        activeSlotAsset.hasAudio &&
+        !activeSlot.slot.muteOriginalAudio &&
+        !activeSlot.slot.reversed &&
+        activeSlot.slot.volume > 0.05
+    );
+    const voiceActiveNow = hasVoiceTrackNow || hasUnmutedClipAudio;
 
     for (const [id, el] of this.audioElements.entries()) {
       if (!activeIds.has(id)) {
@@ -415,6 +436,9 @@ export class PreviewCompositor {
       if (track.fadeOutSec > 0.02 && dur - localT < track.fadeOutSec) {
         env = Math.min(env, Math.max(0, (dur - localT) / track.fadeOutSec));
       }
+      if (track.kind === "bgm" && track.duckUnderVoice && voiceActiveNow) {
+        env *= 0.32;
+      }
 
       el.volume = Math.min(1, Math.max(0, track.volume * env));
       const targetAudioTime =
@@ -459,7 +483,13 @@ export class PreviewCompositor {
     assetsById: Map<string, MediaAsset>,
     timelineSec: number,
     isPlaying: boolean,
-    selectedIds?: { overlayId?: string | null; stickerId?: string | null }
+    selectedIds?: {
+      overlayId?: string | null;
+      stickerId?: string | null;
+      snapX?: boolean;
+      snapY?: boolean;
+      showSafeZones?: boolean;
+    }
   ): ComputedSlotLayout | null {
     const dims = getAspectDimensions(project.aspectRatio, "720p");
     const targetW = Math.round(dims.width * 0.75);
@@ -605,10 +635,12 @@ export class PreviewCompositor {
       }
     }
 
-    // Stickers layer
+    // Stickers layer (catalog SVGs + custom uploaded images/logos)
     for (const st of project.stickers || []) {
       if (t >= st.startSec && t <= st.endSec) {
-        const img = this.getStickerImage(st.stickerId);
+        const customAsset = st.assetId ? assetsById.get(st.assetId) : undefined;
+        if (st.assetId && !customAsset) continue;
+        const img = customAsset ? this.getImage(customAsset) : this.getStickerImage(st.stickerId);
         if (img.complete && img.naturalWidth > 0) {
           const w = targetW * 0.22 * st.scale;
           const h = (img.naturalHeight / img.naturalWidth) * w;
@@ -643,6 +675,48 @@ export class PreviewCompositor {
           selectedIds?.overlayId === overlay.id
         );
       }
+    }
+
+    // Editor-only overlays (center-snap crosshairs + TikTok/Reels safe zones)
+    if (selectedIds?.snapX || selectedIds?.snapY) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(34, 211, 238, 0.85)";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 5]);
+      if (selectedIds.snapX) {
+        ctx.beginPath();
+        ctx.moveTo(targetW / 2, 0);
+        ctx.lineTo(targetW / 2, targetH);
+        ctx.stroke();
+      }
+      if (selectedIds.snapY) {
+        ctx.beginPath();
+        ctx.moveTo(0, targetH / 2);
+        ctx.lineTo(targetW, targetH / 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    if (selectedIds?.showSafeZones) {
+      const topPad = Math.round(targetH * (project.aspectRatio === "9:16" ? 0.12 : 0.08));
+      const bottomPad = Math.round(targetH * (project.aspectRatio === "9:16" ? 0.22 : 0.14));
+      const sideLeftPad = Math.round(targetW * 0.06);
+      const sideRightPad = Math.round(targetW * (project.aspectRatio === "9:16" ? 0.16 : 0.06));
+      const safeW = Math.max(40, targetW - sideLeftPad - sideRightPad);
+      const safeH = Math.max(40, targetH - topPad - bottomPad);
+
+      ctx.save();
+      ctx.strokeStyle = "rgba(250, 204, 21, 0.72)";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(sideLeftPad, topPad, safeW, safeH);
+      ctx.fillStyle = "rgba(250, 204, 21, 0.85)";
+      ctx.font = "600 11px Inter, system-ui, sans-serif";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "bottom";
+      ctx.fillText("SOCIAL SAFE ZONE", sideLeftPad + safeW - 4, topPad - 4);
+      ctx.restore();
     }
 
     return currentLayout;

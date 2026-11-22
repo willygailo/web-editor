@@ -337,6 +337,34 @@ export function AudioDrawer({
             />
           </label>
 
+          {selectedTrack.kind === "bgm" && (
+            <button
+              type="button"
+              aria-pressed={Boolean(selectedTrack.duckUnderVoice)}
+              onClick={() =>
+                onUpdateAudioTrack(selectedTrack.id, {
+                  duckUnderVoice: !selectedTrack.duckUnderVoice,
+                })
+              }
+              className={`flex items-center justify-between gap-2 rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                selectedTrack.duckUnderVoice
+                  ? "border-cyan-400/70 bg-cyan-500/15 text-cyan-200"
+                  : "border-slate-700 bg-[#111520] text-slate-300 hover:border-slate-500"
+              }`}
+            >
+              <span>Duck Music Under Voice / Dialogue</span>
+              <span
+                className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                  selectedTrack.duckUnderVoice
+                    ? "bg-cyan-400 text-slate-950"
+                    : "bg-slate-800 text-slate-400"
+                }`}
+              >
+                {selectedTrack.duckUnderVoice ? "ON" : "OFF"}
+              </span>
+            </button>
+          )}
+
           <div className="grid grid-cols-2 gap-2">
             <label className="flex flex-col gap-0.5 text-[11px] text-slate-300">
               <span>Song Start ({selectedTrack.startOffsetSec.toFixed(1)}s)</span>

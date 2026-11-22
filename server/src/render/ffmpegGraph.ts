@@ -214,7 +214,9 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
 
   const inputArgs: string[] = [];
   const filterParts: string[] = [];
-  const audioBranches: string[] = [];
+  const voiceBranches: string[] = [];
+  const duckedBgmBranches: string[] = [];
+  const regularAudioBranches: string[] = [];
 
   // 1. Add visual inputs (one per timeline slot for clean trim/speed/reverse isolation)
   layout.slots.forEach((slotLayout, idx) => {
@@ -280,7 +282,7 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
         "aformat=sample_rates=44100:channel_layouts=stereo",
       ];
       filterParts.push(`[${idx}:a]${afOps.join(",")}[aslot${idx}]`);
-      audioBranches.push(`[aslot${idx}]`);
+      voiceBranches.push(`[aslot${idx}]`);
     }
   });
 
@@ -316,32 +318,44 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
   let nextInputIdx = layout.slots.length;
   const finalTotalSec = Math.max(0.5, Number(currentDuration.toFixed(3)));
 
-  // 3. Composite stickers (prefer bundled RGBA PNGs so FFmpeg doesn't require librsvg)
+  // 3. Composite stickers (uploaded image assets or bundled PNG / fallback SVG)
   const stickers = project.stickers || [];
-  if (stickers.length > 0 && (stickersDir || builtinsDir)) {
+  if (stickers.length > 0) {
     stickers.forEach((st, idx) => {
       if (st.startSec >= finalTotalSec) return;
       const start = Math.max(0, st.startSec);
       const end = Math.min(finalTotalSec, st.endSec);
       if (end <= start) return;
 
-      const item = getStickerById(st.stickerId);
-      const bundledPngPath = stickersDir
-        ? path.join(stickersDir, `sticker-${item.id}.png`)
-        : undefined;
-
-      let stickerInputPath: string | undefined =
-        bundledPngPath && fs.existsSync(bundledPngPath) ? bundledPngPath : undefined;
+      let stickerInputPath: string | undefined;
+      if (st.assetId) {
+        const customPath = filePathsById.get(st.assetId);
+        if (customPath) {
+          stickerInputPath = customPath;
+        }
+      }
 
       if (!stickerInputPath) {
-        if (!builtinsDir) return;
-        fs.mkdirSync(builtinsDir, { recursive: true });
-        const svgPath = path.join(builtinsDir, `sticker-${item.id}.svg`);
-        if (!fs.existsSync(svgPath)) {
-          fs.writeFileSync(svgPath, item.svg, "utf8");
+        if (st.assetId) return;
+        const item = getStickerById(st.stickerId);
+        const bundledPngPath = stickersDir
+          ? path.join(stickersDir, `sticker-${item.id}.png`)
+          : undefined;
+
+        stickerInputPath =
+          bundledPngPath && fs.existsSync(bundledPngPath) ? bundledPngPath : undefined;
+
+        if (!stickerInputPath && builtinsDir) {
+          fs.mkdirSync(builtinsDir, { recursive: true });
+          const svgPath = path.join(builtinsDir, `sticker-${item.id}.svg`);
+          if (!fs.existsSync(svgPath)) {
+            fs.writeFileSync(svgPath, item.svg, "utf8");
+          }
+          stickerInputPath = svgPath;
         }
-        stickerInputPath = svgPath;
       }
+
+      if (!stickerInputPath) return;
 
       const stickerIn = nextInputIdx++;
       inputArgs.push(
@@ -386,7 +400,7 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
   filterParts.push(`[${currentVideoLabel}]scale=out_range=tv,format=yuv420p[vfinal]`);
   currentVideoLabel = "vfinal";
 
-  // 5. Add multi-track audio (BGM, SFX, Voiceovers)
+  // 5. Add multi-track audio (BGM, SFX, Voiceovers) with optional BGM ducking under voice
   const audioTracks = getProjectAudioTracks(project);
   audioTracks.forEach((track, idx) => {
     const audioPath = filePathsById.get(track.assetId);
@@ -438,8 +452,47 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
 
     const branchLabel = `atrk${idx}`;
     filterParts.push(`[${audioIn}:a]${afOps.join(",")}[${branchLabel}]`);
-    audioBranches.push(`[${branchLabel}]`);
+    if (track.kind === "voiceover") {
+      voiceBranches.push(`[${branchLabel}]`);
+    } else if (track.kind === "bgm" && track.duckUnderVoice) {
+      duckedBgmBranches.push(`[${branchLabel}]`);
+    } else {
+      regularAudioBranches.push(`[${branchLabel}]`);
+    }
   });
+
+  let audioBranches: string[];
+  if (duckedBgmBranches.length > 0 && voiceBranches.length > 0) {
+    if (voiceBranches.length === 1) {
+      const voiceName = voiceBranches[0].replace(/^\[|\]$/g, "");
+      filterParts.push(`[${voiceName}]apad,atrim=0:${finalTotalSec.toFixed(3)}[vcomb]`);
+    } else {
+      filterParts.push(
+        `${voiceBranches.join("")}amix=inputs=${voiceBranches.length}:duration=longest:normalize=0,apad,atrim=0:${finalTotalSec.toFixed(3)}[vcomb]`
+      );
+    }
+
+    const scLabels = duckedBgmBranches.map((_, i) => `[vsc${i}]`);
+    filterParts.push(
+      `[vcomb]asplit=${duckedBgmBranches.length + 1}[voicemix]${scLabels.join("")}`
+    );
+
+    const compressedBgm: string[] = [];
+    duckedBgmBranches.forEach((branch, i) => {
+      const rawName = branch.replace(/^\[|\]$/g, "");
+      filterParts.push(
+        `[${rawName}]apad,atrim=0:${finalTotalSec.toFixed(3)}[bgmpad${i}]`
+      );
+      filterParts.push(
+        `[bgmpad${i}]${scLabels[i]}sidechaincompress=threshold=0.02:ratio=6:attack=40:release=350:level_sc=2:mix=0.85[bgmduck${i}]`
+      );
+      compressedBgm.push(`[bgmduck${i}]`);
+    });
+
+    audioBranches = ["[voicemix]", ...compressedBgm, ...regularAudioBranches];
+  } else {
+    audioBranches = [...voiceBranches, ...duckedBgmBranches, ...regularAudioBranches];
+  }
 
   if (audioBranches.length === 0) {
     inputArgs.push(

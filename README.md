@@ -51,12 +51,12 @@
 
 ### ✂️ CapCut-Style Multi-Track Timeline & Editor
 - **Direct Timeline Manipulation**: Scrub the beat-marked ruler, zoom in/out, **Split at Playhead (`S`)**, drag **clip edge handles** to trim, duplicate or reorder clips, delete selected items (`Delete`/`Backspace`), and click transition badges directly between slots (`cut`, `crossfade`, `flash-white`, `zoom-blur`, `slide-left`).
-- **45-Step Gesture-Aware Undo / Redo**: Atomic undo/redo stack (`Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z`) where edge-trim drags, canvas moves, and slider sweeps record as single clean undo steps.
+- **Auto-Save Drafts & 45-Step Undo / Redo**: Automatically saves active edits to `localStorage` and restores valid timelines across refreshes (with one-click **Reset**), backed by an atomic undo/redo stack (`Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z`).
 - **Dedicated Multi-Lanes**: Visual video track, **Audio (`BGM / SFX / VO`)** lane with live offset-synced SVG waveforms and `+ Add Music / SFX` trigger, **Text & Captions** lane, and **Stickers** lane.
 - **One-Tap Beat Sync & Auto BGM Fit**: Align clip cuts to music beat markers (**Snap Beats**) while automatically syncing BGM length when clips are added, split, or trimmed.
 
 ### 🎵 Music, SFX & Voiceover Studio
-- **Multi-Track Audio Mixing**: Layer background music (`bgm`), sound effects (`sfx`), and voiceovers (`voiceover`) simultaneously with per-track **Timeline Start**, **Song Start**, **Track Length**, **Volume (`0–200%`)**, **Fade In**, and **Fade Out**.
+- **Multi-Track Audio Mixing & Auto-Duck**: Layer background music (`bgm`), sound effects (`sfx`), and voiceovers (`voiceover`) simultaneously with per-track **Timeline Start**, **Song Start**, **Track Length**, **Volume (`0–200%`)**, **Fade In/Out**, and **Duck Music Under Voice / Dialogue** (live gain ducking + FFmpeg `sidechaincompress`).
 - **Audio Audition & 1-Tap Intro Skip**: Preview any library song or listen right from your current `Song Start` offset (**Listen / Stop**), automatically skip leading dead silence, or hit **Skip Intro →** to jump straight to the song's first beat drop.
 - **Auto-Attach & Remix Preservation**: Songs uploaded via **Clips** or **Music & SFX** (even before creating a timeline via **Pick Song**) automatically follow into your first clip, **Use Template**, or **Auto Edit**, while AI **Remix** preserves custom BGM offsets, volumes, SFX, and voiceovers.
 - **Built-in Royalty-Free Audio**:
@@ -70,8 +70,8 @@
 - **Save Custom Templates (with Full Styling)**: Turn any edited timeline—including **stickers, reversed clips, color adjustments, and framing transforms**—into a persistent reusable template (`POST /api/templates`) compatible with both **Use Template** and **AI Fill**.
 - **Export / Import `.cutflow.json`**: Share or back up full edits and reusable template blueprints as portable JSON files with schema validation feedback.
 
-### 🎨 Canvas Dragging, Color Grade, Speed/Reverse & Auto-Captions
-- **Direct Canvas Positioning**: Drag and select **Text Overlays** (`bold-hook`, `capcut-pop`, `minimal-caption`, `neon-badge`, custom colors & animations) and **Stickers** (*Hot / Fire*, *Sparkles*, *Heart*, *Look Here*, *REC Cam*, *VIP Star*) directly on the live preview stage without interrupting audio playback.
+### 🎨 Canvas Snapping, Safe Zones, Color Grade & Auto-Captions
+- **Direct Canvas Positioning, Snap & Safe Zones**: Drag **Text Overlays** (`bold-hook`, `capcut-pop`, `minimal-caption`, `neon-badge`), built-in **Stickers**, or **Custom Uploaded PNG/JPG Logo Stickers** on the live preview stage with magnetic **center-snap crosshairs** and a toggleable **Social Safe Zone** guide (TikTok/Reels/Shorts).
 - **Color Adjust, Transform & Photo Timing**: Fine-tune brightness, contrast, saturation, warmth, vignette, zoom scale, X/Y offset, rotation, clip speed (`0.5x–2.5x`), **Photo Duration (`0.6s–10s`)**, and **Reverse Clip** across any `0.4s–180s` timeline.
 - **AI Auto-Captions**: Generate timed speech/caption overlays from video or audio tracks using Gemini transcription with automatic offline fallback.
 
@@ -237,20 +237,21 @@ CutFlow AI works **even without any API key** using the built-in **Offline Smart
 5. **Select the AI mode**:
    - In **AI Auto-Cut Director**, pick **`Auto`** (uses **Claude** first → **Gemini** fallback → **Offline** fallback), or choose **`Claude 5.5`**, **`Gemini`**, or **`Offline`** directly.
 
-### Option B: In-App Browser Settings (Quick BYOK Key Entry — No `.env` Restart)
+### Option B: In-App Browser Settings (Quick Key & Model ID Entry — No `.env` Restart)
 
-Use this if you want to enter or override an API key directly from the browser without restarting the server:
+Use this if you want to enter or override API keys or Model IDs directly from the browser without restarting the server:
 
 1. Click the **Settings (`⚙️`)** icon in the top-right header of CutFlow AI to open **AI & Server Settings**.
-2. Paste your key(s) into the optional fields:
+2. Fill in any optional overrides:
    - **Optional Browser Anthropic Key** (`sk-ant-api03-...` or `sk-ant-usr-...`)
-   - **Optional Anthropic Workspace ID** (`wrkspc_...`, leave blank to auto-detect for `sk-ant-usr-*` keys)
-   - **Optional Browser Gemini API Key** (`AIza...`)
+   - **Claude Model ID** (optional override for server `ANTHROPIC_MODEL`)
+   - **Anthropic Workspace ID** (`wrkspc_...`, leave blank to auto-detect for `sk-ant-usr-*` keys)
+   - **Optional Browser Gemini Key** (`AIza...`)
+   - **Gemini Model ID** (optional override for server `GEMINI_MODEL`)
 3. Click **Save**.
 
 > [!NOTE]
-> - **Priority & Privacy**: Keys saved in **Settings** stay only in your browser's `localStorage` and are sent via request headers (`x-anthropic-api-key`, `x-anthropic-workspace-id`, `x-gemini-api-key`), overriding server `.env` keys per request. Leave them blank to use `.env` or **Offline** mode.
-> - **Where Model IDs Live**: Changing Model IDs (`ANTHROPIC_MODEL` and `GEMINI_MODEL`) is done in `.env` (and displayed read-only inside **AI & Server Settings**).
+> - **Priority & Privacy**: Keys and Model IDs saved in **Settings** stay only in your browser's `localStorage` and are sent via request headers (`x-anthropic-api-key`, `x-anthropic-model`, `x-anthropic-workspace-id`, `x-gemini-api-key`, `x-gemini-model`), overriding server `.env` defaults per request. Leave any field blank to fall back cleanly to `.env` (or **Offline** mode when no key is set).
 
 ---
 
@@ -264,7 +265,7 @@ Full reference of variables supported in `.env` (see [`.env.example`](./.env.exa
 | `ANTHROPIC_MODEL` | `claude-sonnet-5-5` | Anthropic model ID used for AI Auto-Edit |
 | `ANTHROPIC_WORKSPACE_ID` | *(auto)* | Optional workspace ID (auto-discovered for `sk-ant-usr-*` keys) |
 | `GEMINI_API_KEY` | *(empty)* | Optional Google Gemini API key |
-| `GEMINI_MODEL` | `gemini-4-hydrogen` | Gemini model ID used for AI Auto-Edit video/image analysis (`Auto Captions` uses `gemini-4-hydrogen`) |
+| `GEMINI_MODEL` | `gemini-4-hydrogen` | Gemini model ID used for AI Auto-Edit and Auto Captions |
 | `PORT` | `3001` | Fastify API server port |
 | `HOST` | `0.0.0.0` | Bind host (`0.0.0.0` enables mobile LAN access) |
 | `STORAGE_DIR` | `./data` | Upload, proxy, built-in audio/SFX, template, and render directory |

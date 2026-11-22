@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   computeTimelineLayout,
   getProjectAudioTracks,
@@ -12,6 +12,7 @@ import {
 } from "@cutflow/shared";
 
 const MAX_HISTORY = 45;
+export const AUTOSAVE_STORAGE_KEY = "cutflow_autosave_project";
 
 export interface EditorSelection {
   slotId: string | null;
@@ -591,6 +592,31 @@ function buildBgmTrack(asset: MediaAsset, totalDurSec: number): AudioTrack {
     }
   }, [updateOverlays, selectOverlay, updateStickers, selectSticker, deleteAudioTrack, deleteSlot]);
 
+  const clearProject = useCallback(() => {
+    gestureBaseRef.current = null;
+    setHistory({ past: [], present: null, future: [] });
+    setSelection({
+      slotId: null,
+      audioTrackId: null,
+      overlayId: null,
+      stickerId: null,
+    });
+    try {
+      localStorage.removeItem(AUTOSAVE_STORAGE_KEY);
+    } catch {
+      // ignore storage errors
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!history.present) return;
+    try {
+      localStorage.setItem(AUTOSAVE_STORAGE_KEY, JSON.stringify(history.present));
+    } catch {
+      // ignore storage errors
+    }
+  }, [history.present]);
+
   return {
     project: history.present,
     canUndo: history.past.length > 0,
@@ -600,6 +626,7 @@ function buildBgmTrack(asset: MediaAsset, totalDurSec: number): AudioTrack {
     beginGesture,
     endGesture,
     loadProject,
+    clearProject,
     undo,
     redo,
     selectSlot,

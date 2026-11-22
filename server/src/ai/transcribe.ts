@@ -57,9 +57,11 @@ export async function generateAutoCaptions(params: {
   asset: MediaAsset;
   filePath: string;
   geminiApiKey?: string;
+  model?: string;
 }): Promise<{ overlays: TextOverlay[]; source: "gemini" | "offline" }> {
-  const { asset, filePath, geminiApiKey } = params;
+  const { asset, filePath, geminiApiKey, model } = params;
   const key = geminiApiKey?.trim();
+  const activeModel = model?.trim() || "gemini-4-hydrogen";
 
   if (!key || !asset.hasAudio) {
     return { overlays: buildOfflineSpeechPlaceholders(asset), source: "offline" };
@@ -79,7 +81,7 @@ export async function generateAutoCaptions(params: {
 
     const client = new GoogleGenAI({ apiKey: key });
     const interaction = await client.interactions.create({
-      model: "gemini-4-hydrogen",
+      model: activeModel,
       system_instruction:
         "Transcribe spoken audio into concise short CapCut-style subtitle chunks (2-6 words per caption) with accurate startSec and endSec timestamps.",
       input: [

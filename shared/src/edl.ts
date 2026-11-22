@@ -133,7 +133,8 @@ export type TextOverlay = z.infer<typeof TextOverlaySchema>;
 
 export const StickerOverlaySchema = z.object({
   id: z.string().min(1),
-  stickerId: z.string().min(1),
+  stickerId: z.string().min(1).default("custom-image"),
+  assetId: z.string().min(1).optional(),
   startSec: z.number().min(0),
   endSec: z.number().positive(),
   xNorm: z.number().min(0.05).max(0.95).default(0.5),
@@ -154,6 +155,7 @@ export const AudioTrackSchema = z.object({
   volume: z.number().min(0).max(2).default(0.85),
   fadeInSec: z.number().min(0).max(5).default(0.25),
   fadeOutSec: z.number().min(0).max(8).default(0.8),
+  duckUnderVoice: z.boolean().optional(),
   beatMarkersSec: z.array(z.number().min(0)).default([]),
 });
 export type AudioTrack = z.infer<typeof AudioTrackSchema>;

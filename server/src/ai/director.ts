@@ -7,7 +7,9 @@ import { generateOfflineCutProject } from "./offline.js";
 export async function runAutoEditDirector(params: {
   request: AutoEditRequest;
   userGeminiKey?: string;
+  userGeminiModel?: string;
   userAnthropicKey?: string;
+  userAnthropicModel?: string;
   userAnthropicWorkspaceId?: string;
   config: ServerConfig;
   assetsById: Map<string, MediaAsset>;
@@ -17,7 +19,9 @@ export async function runAutoEditDirector(params: {
   const {
     request,
     userGeminiKey,
+    userGeminiModel,
     userAnthropicKey,
+    userAnthropicModel,
     userAnthropicWorkspaceId,
     config,
     assetsById,
@@ -26,12 +30,14 @@ export async function runAutoEditDirector(params: {
   } = params;
 
   const effectiveAnthropicKey = (userAnthropicKey || config.anthropicApiKey || "").trim();
+  const effectiveAnthropicModel = (userAnthropicModel || config.anthropicModel).trim();
   const effectiveWorkspaceId = (
     userAnthropicWorkspaceId ||
     config.anthropicWorkspaceId ||
     ""
   ).trim();
   const effectiveGeminiKey = (userGeminiKey || config.geminiApiKey || "").trim();
+  const effectiveGeminiModel = (userGeminiModel || config.geminiModel).trim();
 
   if (request.mode === "offline") {
     return generateOfflineCutProject(request, assetsById, templates);
@@ -40,7 +46,7 @@ export async function runAutoEditDirector(params: {
   const runClaude = async () =>
     generateAnthropicCutProject({
       apiKey: effectiveAnthropicKey,
-      model: config.anthropicModel,
+      model: effectiveAnthropicModel,
       workspaceId: effectiveWorkspaceId || undefined,
       request,
       assetsById,
@@ -51,7 +57,7 @@ export async function runAutoEditDirector(params: {
   const runGemini = async () =>
     generateGeminiCutProject({
       apiKey: effectiveGeminiKey,
-      model: config.geminiModel,
+      model: effectiveGeminiModel,
       request,
       assetsById,
       filePathsById,
@@ -118,7 +124,7 @@ export async function runAutoEditDirector(params: {
       return await runClaude();
     } catch (err) {
       warnings.push(
-        `Claude (${config.anthropicModel}) unavailable: ${err instanceof Error ? err.message : String(err)}`
+        `Claude (${effectiveAnthropicModel}) unavailable: ${err instanceof Error ? err.message : String(err)}`
       );
     }
   }
@@ -129,7 +135,7 @@ export async function runAutoEditDirector(params: {
       return { project: res.project, warnings: [...warnings, ...res.warnings] };
     } catch (err) {
       warnings.push(
-        `Gemini (${config.geminiModel}) unavailable: ${err instanceof Error ? err.message : String(err)}`
+        `Gemini (${effectiveGeminiModel}) unavailable: ${err instanceof Error ? err.message : String(err)}`
       );
     }
   }

@@ -6,6 +6,7 @@ import { CutProjectSchema, type MediaAsset } from "@cutflow/shared";
 import { generateOfflineCutProject } from "./ai/offline.js";
 import { runProcess } from "./media/exec.js";
 import { MediaStore } from "./media/store.js";
+import { sanitizeCutProject } from "./ai/sanitize.js";
 import { probeMediaFile } from "./media/probe.js";
 import { buildFfmpegRenderPlan, escapeFfmpegFilterPath } from "./render/ffmpegGraph.js";
 import { generateAssSubtitles } from "./render/subtitles.js";
@@ -796,4 +797,232 @@ describe("Cross-Platform Compatibility (Windows / macOS / Linux)", () => {
     expect(loaded?.filePath).toBe(targetVideo);
     expect(loaded?.thumbPath).toBe(targetThumb);
   });
+});
+
+describe("V3 Features (Audio Ducking, Custom Logo Sticker & Model Overrides)", () => {
+  it("renders BGM with sidechain ducking under voiceover and composites uploaded PNG image stickers", async () => {
+    const baseVid = path.join(tempRoot, "v3-base.mp4");
+    const logoPng = path.join(tempRoot, "v3-logo.png");
+    const bgmWav = path.join(tempRoot, "v3-bgm.wav");
+    const voWav = path.join(tempRoot, "v3-vo.wav");
+    const outPath = path.join(tempRoot, "v3-output.mp4");
+
+    const r1 = await runProcess("ffmpeg", [
+      "-y", "-f", "lavfi", "-i", "color=c=navy:s=720x1280:d=4:r=30",
+      "-c:v", "libx264", "-preset", "ultrafast", baseVid,
+    ]);
+    const r2 = await runProcess("ffmpeg", [
+      "-y", "-f", "lavfi", "-i", "color=c=orange@0.9:s=200x100:d=1",
+      "-frames:v", "1", "-pix_fmt", "rgba", logoPng,
+    ]);
+    const r3 = await runProcess("ffmpeg", [
+      "-y", "-f", "lavfi", "-i", "sine=frequency=220:duration=4,volume=6",
+      "-c:a", "pcm_s16le", bgmWav,
+    ]);
+    const r4 = await runProcess("ffmpeg", [
+      "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=1.5,volume=6",
+      "-c:a", "pcm_s16le", voWav,
+    ]);
+    expect(r1.code).toBe(0);
+    expect(r2.code).toBe(0);
+    expect(r3.code).toBe(0);
+    expect(r4.code).toBe(0);
+
+    const assetsById = new Map<string, MediaAsset>([
+      [
+        "v3-vid",
+        {
+          id: "v3-vid",
+          filename: "v3-base.mp4",
+          originalName: "Base",
+          kind: "video",
+          mimeType: "video/mp4",
+          url: "/api/media/v3-vid/stream",
+          durationSec: 4,
+          width: 720,
+          height: 1280,
+          fps: 30,
+          hasAudio: false,
+          beatMarkersSec: [],
+          energyPeaksSec: [],
+          silenceRanges: [],
+          isBuiltIn: false,
+        },
+      ],
+      [
+        "v3-logo",
+        {
+          id: "v3-logo",
+          filename: "v3-logo.png",
+          originalName: "Brand Logo",
+          kind: "image",
+          mimeType: "image/png",
+          url: "/api/media/v3-logo/stream",
+          durationSec: 6,
+          width: 200,
+          height: 100,
+          hasAudio: false,
+          beatMarkersSec: [],
+          energyPeaksSec: [],
+          silenceRanges: [],
+          isBuiltIn: false,
+        },
+      ],
+      [
+        "v3-bgm",
+        {
+          id: "v3-bgm",
+          filename: "v3-bgm.wav",
+          originalName: "BGM",
+          kind: "audio",
+          audioCategory: "bgm",
+          mimeType: "audio/wav",
+          url: "/api/media/v3-bgm/stream",
+          durationSec: 4,
+          hasAudio: true,
+          beatMarkersSec: [],
+          energyPeaksSec: [],
+          silenceRanges: [],
+          isBuiltIn: false,
+        },
+      ],
+      [
+        "v3-vo",
+        {
+          id: "v3-vo",
+          filename: "v3-vo.wav",
+          originalName: "Voiceover",
+          kind: "audio",
+          audioCategory: "voiceover",
+          mimeType: "audio/wav",
+          url: "/api/media/v3-vo/stream",
+          durationSec: 1.5,
+          hasAudio: true,
+          beatMarkersSec: [],
+          energyPeaksSec: [],
+          silenceRanges: [],
+          isBuiltIn: false,
+        },
+      ],
+    ]);
+
+    const filePathsById = new Map([
+      ["v3-vid", baseVid],
+      ["v3-logo", logoPng],
+      ["v3-bgm", bgmWav],
+      ["v3-vo", voWav],
+    ]);
+
+    const project = CutProjectSchema.parse({
+      id: "proj-v3-render",
+      title: "V3 Render Test",
+      templateId: "hype-zoom",
+      promptUsed: "v3",
+      modeUsed: "template",
+      aspectRatio: "9:16",
+      fps: 30,
+      targetDurationSec: 4,
+      clips: [
+        {
+          id: "slot-1",
+          assetId: "v3-vid",
+          sourceStartSec: 0,
+          sourceEndSec: 4,
+          speed: 1,
+          motion: "none",
+          transitionIn: "cut",
+          transitionDurationSec: 0,
+          filter: "none",
+          muteOriginalAudio: true,
+          volume: 0,
+        },
+      ],
+      overlays: [],
+      stickers: [
+        {
+          id: "stk-logo",
+          stickerId: "custom-image",
+          assetId: "v3-logo",
+          startSec: 0.2,
+          endSec: 3.5,
+          xNorm: 0.82,
+          yNorm: 0.16,
+          scale: 0.9,
+          rotationDeg: 0,
+        },
+      ],
+      audioTracks: [
+        {
+          id: "aud-bgm",
+          kind: "bgm",
+          assetId: "v3-bgm",
+          timelineStartSec: 0,
+          durationSec: 4,
+          startOffsetSec: 0,
+          volume: 0.9,
+          fadeInSec: 0.1,
+          fadeOutSec: 0.2,
+          duckUnderVoice: true,
+          beatMarkersSec: [],
+        },
+        {
+          id: "aud-vo",
+          kind: "voiceover",
+          assetId: "v3-vo",
+          timelineStartSec: 1.5,
+          durationSec: 1.5,
+          startOffsetSec: 0,
+          volume: 1.0,
+          fadeInSec: 0.05,
+          fadeOutSec: 0.05,
+          beatMarkersSec: [],
+        },
+      ],
+    });
+
+    const plan = buildFfmpegRenderPlan({
+      project,
+      quality: "720p",
+      assetsById,
+      filePathsById,
+      outputPath: outPath,
+    });
+
+    const fc = plan.args[plan.args.indexOf("-filter_complex") + 1] ?? "";
+    expect(plan.args).toContain(logoPng);
+    expect(fc).toContain("sidechaincompress=");
+    expect(fc).toContain("[voicemix]");
+
+    const renderRes = await runProcess("ffmpeg", plan.args, { timeoutMs: 60_000 });
+    expect(renderRes.code, renderRes.stderr).toBe(0);
+    const outProbe = await probeMediaFile(outPath, "video");
+    expect(outProbe.width).toBe(720);
+    expect(outProbe.height).toBe(1280);
+    expect(outProbe.hasAudio).toBe(true);
+
+    // Sanitizer drops stale custom sticker assets while preserving valid ones & duckUnderVoice
+    const sanitized = sanitizeCutProject(
+      {
+        ...project,
+        stickers: [
+          ...project.stickers,
+          {
+            id: "stk-missing",
+            stickerId: "custom-image",
+            assetId: "missing-img-id",
+            startSec: 0,
+            endSec: 2,
+            xNorm: 0.5,
+            yNorm: 0.5,
+            scale: 1,
+            rotationDeg: 0,
+          },
+        ],
+      },
+      assetsById
+    );
+    expect(sanitized.project.stickers.map((s) => s.id)).toEqual(["stk-logo"]);
+    expect(sanitized.warnings.some((w) => w.includes("missing-img-id"))).toBe(true);
+    expect(sanitized.project.audioTracks[0]?.duckUnderVoice).toBe(true);
+  }, 60_000);
 });

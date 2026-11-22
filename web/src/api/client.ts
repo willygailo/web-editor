@@ -105,11 +105,15 @@ export async function extractAudioFromVideo(assetId: string): Promise<MediaAsset
 
 export async function transcribeMedia(
   assetId: string,
-  geminiKey?: string
+  geminiKey?: string,
+  geminiModel?: string
 ): Promise<TranscribeResponse> {
   const headers: Record<string, string> = {};
   if (geminiKey?.trim()) {
     headers["x-gemini-api-key"] = geminiKey.trim();
+  }
+  if (geminiModel?.trim()) {
+    headers["x-gemini-model"] = geminiModel.trim();
   }
   const res = await fetch(
     `/api/media/${encodeURIComponent(assetId)}/transcribe`,
@@ -157,8 +161,10 @@ export async function deleteCustomTemplate(id: string): Promise<void> {
 
 export interface UserAiKeys {
   anthropicApiKey?: string;
+  anthropicModel?: string;
   anthropicWorkspaceId?: string;
   geminiApiKey?: string;
+  geminiModel?: string;
 }
 
 export async function runAutoEdit(
@@ -171,11 +177,17 @@ export async function runAutoEdit(
   if (userKeys?.anthropicApiKey?.trim()) {
     headers["x-anthropic-api-key"] = userKeys.anthropicApiKey.trim();
   }
+  if (userKeys?.anthropicModel?.trim()) {
+    headers["x-anthropic-model"] = userKeys.anthropicModel.trim();
+  }
   if (userKeys?.anthropicWorkspaceId?.trim()) {
     headers["x-anthropic-workspace-id"] = userKeys.anthropicWorkspaceId.trim();
   }
   if (userKeys?.geminiApiKey?.trim()) {
     headers["x-gemini-api-key"] = userKeys.geminiApiKey.trim();
+  }
+  if (userKeys?.geminiModel?.trim()) {
+    headers["x-gemini-model"] = userKeys.geminiModel.trim();
   }
 
   const res = await fetch("/api/projects/auto-edit", {

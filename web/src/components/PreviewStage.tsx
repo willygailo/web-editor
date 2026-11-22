@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Pause, Play, RotateCcw, Sparkles, Upload } from "lucide-react";
+import { Frame, Pause, Play, RotateCcw, Sparkles, Upload } from "lucide-react";
 import {
   computeTimelineLayout,
   getOverlayNormalizedPos,
@@ -67,6 +67,13 @@ export function PreviewStage({
   isPlayingRef.current = isPlaying;
 
   const [liveStatus, setLiveStatus] = useState("");
+  const [showSafeZones, setShowSafeZones] = useState(false);
+  const showSafeZonesRef = useRef(false);
+  showSafeZonesRef.current = showSafeZones;
+  const activeSnapRef = useRef<{ snapX: boolean; snapY: boolean }>({
+    snapX: false,
+    snapY: false,
+  });
   const dragStateRef = useRef<{
     kind: "overlay" | "sticker";
     id: string;
@@ -88,6 +95,9 @@ export function PreviewStage({
       comp.renderFrame(canvas, proj, assetsRef.current, timeRef.current, false, {
         overlayId: selectionRef.current.overlayId,
         stickerId: selectionRef.current.stickerId,
+        snapX: activeSnapRef.current.snapX,
+        snapY: activeSnapRef.current.snapY,
+        showSafeZones: showSafeZonesRef.current,
       });
     });
     return () => {
@@ -109,8 +119,11 @@ export function PreviewStage({
     comp.renderFrame(canvas, project, assetsById, currentTime, false, {
       overlayId: selection.overlayId,
       stickerId: selection.stickerId,
+      snapX: activeSnapRef.current.snapX,
+      snapY: activeSnapRef.current.snapY,
+      showSafeZones,
     });
-  }, [project, assetsById, currentTime, isPlaying, selection.overlayId, selection.stickerId]);
+  }, [project, assetsById, currentTime, isPlaying, selection.overlayId, selection.stickerId, showSafeZones]);
 
   const hasProject = Boolean(project);
   useEffect(() => {
@@ -138,6 +151,9 @@ export function PreviewStage({
       comp.renderFrame(canvas, proj, assetsRef.current, nextTime, true, {
         overlayId: selectionRef.current.overlayId,
         stickerId: selectionRef.current.stickerId,
+        snapX: activeSnapRef.current.snapX,
+        snapY: activeSnapRef.current.snapY,
+        showSafeZones: showSafeZonesRef.current,
       });
       rafId = requestAnimationFrame(tick);
     };
@@ -147,6 +163,9 @@ export function PreviewStage({
       comp.renderFrame(canvas, projectRef.current, assetsRef.current, timeRef.current, true, {
         overlayId: selectionRef.current.overlayId,
         stickerId: selectionRef.current.stickerId,
+        snapX: activeSnapRef.current.snapX,
+        snapY: activeSnapRef.current.snapY,
+        showSafeZones: showSafeZonesRef.current,
       });
     }
     rafId = requestAnimationFrame(tick);
@@ -215,8 +234,14 @@ export function PreviewStage({
     drag.moved = true;
 
     const rect = canvas.getBoundingClientRect();
-    const nextX = Math.max(0.08, Math.min(0.92, drag.origXNorm + dx / Math.max(1, rect.width)));
-    const nextY = Math.max(0.08, Math.min(0.92, drag.origYNorm + dy / Math.max(1, rect.height)));
+    const rawX = Math.max(0.08, Math.min(0.92, drag.origXNorm + dx / Math.max(1, rect.width)));
+    const rawY = Math.max(0.08, Math.min(0.92, drag.origYNorm + dy / Math.max(1, rect.height)));
+    const SNAP_THRESHOLD = 0.025;
+    const snapX = Math.abs(rawX - 0.5) <= SNAP_THRESHOLD;
+    const snapY = Math.abs(rawY - 0.5) <= SNAP_THRESHOLD;
+    activeSnapRef.current = { snapX, snapY };
+    const nextX = snapX ? 0.5 : rawX;
+    const nextY = snapY ? 0.5 : rawY;
 
     if (drag.kind === "overlay") {
       onMoveOverlayPos(drag.id, Number(nextX.toFixed(3)), Number(nextY.toFixed(3)));
@@ -227,10 +252,28 @@ export function PreviewStage({
 
   const handleCanvasPointerUp = () => {
     const drag = dragStateRef.current;
+    const hadSnap = activeSnapRef.current.snapX || activeSnapRef.current.snapY;
+    activeSnapRef.current = { snapX: false, snapY: false };
     onEndDrag();
     if (drag?.moved) {
       setLiveStatus(`${drag.kind === "overlay" ? "Text" : "Sticker"} repositioned on canvas`);
       window.setTimeout(() => setLiveStatus(""), 900);
+      if (hadSnap && canvasRef.current && projectRef.current && compositorRef.current && !isPlayingRef.current) {
+        compositorRef.current.renderFrame(
+          canvasRef.current,
+          projectRef.current,
+          assetsRef.current,
+          timeRef.current,
+          false,
+          {
+            overlayId: selectionRef.current.overlayId,
+            stickerId: selectionRef.current.stickerId,
+            snapX: false,
+            snapY: false,
+            showSafeZones: showSafeZonesRef.current,
+          }
+        );
+      }
     } else if (!drag) {
       onPlayingChange(!isPlaying);
     }
@@ -262,6 +305,7 @@ export function PreviewStage({
               onPointerMove={handleCanvasPointerMove}
               onPointerUp={handleCanvasPointerUp}
               onPointerCancel={() => {
+                activeSnapRef.current = { snapX: false, snapY: false };
                 dragStateRef.current = null;
               }}
               className="canvas-draggable h-full w-full cursor-pointer object-contain"
@@ -338,6 +382,20 @@ export function PreviewStage({
               className="inline-flex items-center justify-center rounded-lg border border-slate-700 p-1 text-slate-300 hover:text-white"
             >
               <RotateCcw className="size-3.5" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              aria-pressed={showSafeZones}
+              onClick={() => setShowSafeZones((v) => !v)}
+              title="Toggle TikTok / Reels UI safe-zone guides"
+              className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-semibold transition ${
+                showSafeZones
+                  ? "border-amber-400/70 bg-amber-400/15 text-amber-200"
+                  : "border-slate-700 text-slate-300 hover:text-white"
+              }`}
+            >
+              <Frame className="size-3" aria-hidden="true" />
+              <span className="hidden sm:inline">Safe Zone</span>
             </button>
             <span className="ml-1 font-mono text-[11px] text-slate-200">
               {formatTime(currentTime)} / {formatTime(totalSec)}

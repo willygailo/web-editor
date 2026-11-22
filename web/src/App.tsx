@@ -14,7 +14,9 @@ import {
   Undo2,
 } from "lucide-react";
 import {
+  CutProjectSchema,
   extractTemplateFromProject,
+  getProjectAudioTracks,
   type AspectRatio,
   type AudioCategory,
   type CutProject,
@@ -44,7 +46,7 @@ import { SlotInspector, type InspectorSection } from "./components/SlotInspector
 import { TemplateDrawer } from "./components/TemplateDrawer";
 import { TemplateStudioModal } from "./components/TemplateStudioModal";
 import { TimelineBar } from "./components/TimelineBar";
-import { useEditorStore } from "./state/useEditorStore";
+import { AUTOSAVE_STORAGE_KEY, useEditorStore } from "./state/useEditorStore";
 
 type ToolPanel = "clips" | "audio" | "templates" | "ai" | "edit" | "adjust" | "text" | "stickers";
 
@@ -83,6 +85,13 @@ export function App() {
       return "";
     }
   });
+  const [anthropicModel, setAnthropicModel] = useState<string>(() => {
+    try {
+      return localStorage.getItem("cutflow_anthropic_model") ?? "";
+    } catch {
+      return "";
+    }
+  });
   const [anthropicWorkspaceId, setAnthropicWorkspaceId] = useState<string>(() => {
     try {
       return localStorage.getItem("cutflow_anthropic_workspace") ?? "";
@@ -93,6 +102,13 @@ export function App() {
   const [geminiKey, setGeminiKey] = useState<string>(() => {
     try {
       return localStorage.getItem("cutflow_gemini_key") ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const [geminiModel, setGeminiModel] = useState<string>(() => {
+    try {
+      return localStorage.getItem("cutflow_gemini_model") ?? "";
     } catch {
       return "";
     }
@@ -114,11 +130,45 @@ export function App() {
         setTemplates(tpls);
         const visuals = media.filter((m) => m.kind !== "audio").map((m) => m.id);
         if (visuals.length > 0) setSelectedVisualIds(visuals);
+
+        try {
+          const savedRaw = localStorage.getItem(AUTOSAVE_STORAGE_KEY);
+          if (savedRaw) {
+            const parsed = CutProjectSchema.safeParse(JSON.parse(savedRaw));
+            if (parsed.success) {
+              const mediaMap = new Map(media.map((m) => [m.id, m]));
+              const validClips = parsed.data.clips.filter((c) => {
+                const a = mediaMap.get(c.assetId);
+                return Boolean(a && a.kind !== "audio");
+              });
+              if (validClips.length > 0) {
+                const validTracks = getProjectAudioTracks(parsed.data).filter(
+                  (t) => mediaMap.get(t.assetId)?.kind === "audio"
+                );
+                const validStickers = (parsed.data.stickers || []).filter(
+                  (st) => !st.assetId || mediaMap.get(st.assetId)?.kind === "image"
+                );
+                store.loadProject(
+                  {
+                    ...parsed.data,
+                    clips: validClips,
+                    stickers: validStickers,
+                    audioTracks: validTracks,
+                    audioTrack: validTracks[0],
+                  },
+                  false
+                );
+              }
+            }
+          }
+        } catch {
+          // Ignore malformed autosave draft
+        }
       } catch (err) {
         setBannerError(err instanceof Error ? err.message : "Unable to reach API server.");
       }
     })();
-  }, []);
+  }, [store.loadProject]);
 
   // Desktop & keyboard shortcuts (Undo/Redo/Split/Play-Pause/Delete)
   useEffect(() => {
@@ -152,15 +202,21 @@ export function App() {
 
   const handleSaveKeys = (keys: {
     anthropicKey: string;
+    anthropicModel: string;
     anthropicWorkspaceId: string;
     geminiKey: string;
+    geminiModel: string;
   }) => {
     setAnthropicKey(keys.anthropicKey);
+    setAnthropicModel(keys.anthropicModel);
     setAnthropicWorkspaceId(keys.anthropicWorkspaceId);
     setGeminiKey(keys.geminiKey);
+    setGeminiModel(keys.geminiModel);
     try {
       if (keys.anthropicKey) localStorage.setItem("cutflow_anthropic_key", keys.anthropicKey);
       else localStorage.removeItem("cutflow_anthropic_key");
+      if (keys.anthropicModel) localStorage.setItem("cutflow_anthropic_model", keys.anthropicModel);
+      else localStorage.removeItem("cutflow_anthropic_model");
       if (keys.anthropicWorkspaceId) {
         localStorage.setItem("cutflow_anthropic_workspace", keys.anthropicWorkspaceId);
       } else {
@@ -168,6 +224,8 @@ export function App() {
       }
       if (keys.geminiKey) localStorage.setItem("cutflow_gemini_key", keys.geminiKey);
       else localStorage.removeItem("cutflow_gemini_key");
+      if (keys.geminiModel) localStorage.setItem("cutflow_gemini_model", keys.geminiModel);
+      else localStorage.removeItem("cutflow_gemini_model");
     } catch {
       // ignore storage errors
     }
@@ -277,8 +335,10 @@ export function App() {
         },
         {
           anthropicApiKey: anthropicKey,
+          anthropicModel,
           anthropicWorkspaceId,
           geminiApiKey: geminiKey,
+          geminiModel,
         }
       );
       store.loadProject(res.project);
@@ -311,7 +371,7 @@ export function App() {
     if (!project) return;
     setBannerError(null);
     try {
-      const res = await transcribeMedia(videoAssetId, geminiKey);
+      const res = await transcribeMedia(videoAssetId, geminiKey, geminiModel);
       store.updateOverlays([...project.overlays, ...res.overlays]);
       if (res.overlays[0]) store.selectOverlay(res.overlays[0].id);
     } catch (err) {
@@ -438,6 +498,18 @@ export function App() {
                   </button>
                 ))}
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPlaying(false);
+                  setCurrentTime(0);
+                  store.clearProject();
+                }}
+                title="Reset timeline & clear autosaved draft"
+                className="rounded-xl border border-slate-700/80 bg-[#111520] px-2.5 py-1.5 text-[11px] font-semibold text-slate-300 hover:border-rose-400 hover:text-rose-200"
+              >
+                Reset
+              </button>
             </>
           )}
 
@@ -846,8 +918,10 @@ export function App() {
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         anthropicKey={anthropicKey}
+        anthropicModel={anthropicModel}
         anthropicWorkspaceId={anthropicWorkspaceId}
         geminiKey={geminiKey}
+        geminiModel={geminiModel}
         onSaveKeys={handleSaveKeys}
         health={health}
       />

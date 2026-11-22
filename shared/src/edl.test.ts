@@ -151,4 +151,86 @@ describe("computeTimelineLayout", () => {
     expect(rebuilt.stickers.length).toBe(1);
     expect(rebuilt.clips[0]?.adjust?.brightness).toBe(0.1);
   });
+
+  it("supports V3 audio ducking flag and custom uploaded image stickers in schema", () => {
+    const assetsById = new Map([
+      [
+        "clip-v3",
+        {
+          id: "clip-v3",
+          filename: "clip.mp4",
+          originalName: "Clip",
+          kind: "video" as const,
+          mimeType: "video/mp4",
+          url: "/api/media/clip-v3/stream",
+          durationSec: 6,
+          hasAudio: false,
+          beatMarkersSec: [],
+          energyPeaksSec: [],
+          silenceRanges: [],
+          isBuiltIn: false,
+        },
+      ],
+      [
+        "logo-1",
+        {
+          id: "logo-1",
+          filename: "logo.png",
+          originalName: "Channel Logo",
+          kind: "image" as const,
+          mimeType: "image/png",
+          url: "/api/media/logo-1/stream",
+          durationSec: 6,
+          hasAudio: false,
+          beatMarkersSec: [],
+          energyPeaksSec: [],
+          silenceRanges: [],
+          isBuiltIn: false,
+        },
+      ],
+    ]);
+
+    const preset = getTemplatePresetById("hype-zoom");
+    const built = buildProjectFromTemplate({
+      template: preset,
+      slotAssetIds: ["clip-v3"],
+      assetsById,
+      projectId: "proj-v3",
+    });
+
+    const withV3 = {
+      ...built,
+      stickers: [
+        {
+          id: "stk-custom",
+          stickerId: "custom-image",
+          assetId: "logo-1",
+          startSec: 0,
+          endSec: 3,
+          xNorm: 0.85,
+          yNorm: 0.15,
+          scale: 0.8,
+          rotationDeg: 0,
+        },
+      ],
+      audioTracks: [
+        {
+          id: "bgm-1",
+          kind: "bgm" as const,
+          assetId: "beat-1",
+          timelineStartSec: 0,
+          durationSec: 5,
+          startOffsetSec: 0,
+          volume: 0.9,
+          fadeInSec: 0.2,
+          fadeOutSec: 0.4,
+          duckUnderVoice: true,
+          beatMarkersSec: [],
+        },
+      ],
+    };
+
+    expect(withV3.stickers[0]?.assetId).toBe("logo-1");
+    expect(withV3.audioTracks[0]?.duckUnderVoice).toBe(true);
+  });
 });

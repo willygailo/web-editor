@@ -52,14 +52,19 @@ export function registerAiRoutes(
     }
 
     const geminiHeader = request.headers["x-gemini-api-key"];
+    const geminiModelHeader = request.headers["x-gemini-model"];
     const anthropicHeader = request.headers["x-anthropic-api-key"];
+    const anthropicModelHeader = request.headers["x-anthropic-model"];
     const workspaceHeader = request.headers["x-anthropic-workspace-id"];
 
     try {
       const result = await runAutoEditDirector({
         request: parsed.data,
         userGeminiKey: typeof geminiHeader === "string" ? geminiHeader : undefined,
+        userGeminiModel: typeof geminiModelHeader === "string" ? geminiModelHeader : undefined,
         userAnthropicKey: typeof anthropicHeader === "string" ? anthropicHeader : undefined,
+        userAnthropicModel:
+          typeof anthropicModelHeader === "string" ? anthropicModelHeader : undefined,
         userAnthropicWorkspaceId:
           typeof workspaceHeader === "string" ? workspaceHeader : undefined,
         config,

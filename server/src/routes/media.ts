@@ -246,14 +246,19 @@ export function registerMediaRoutes(
         return reply.status(404).send({ error: "Media not found" });
       }
       const geminiHeader = request.headers["x-gemini-api-key"];
+      const geminiModelHeader = request.headers["x-gemini-model"];
       const key =
         (typeof geminiHeader === "string" && geminiHeader.trim()) ||
         config.geminiApiKey;
+      const model =
+        (typeof geminiModelHeader === "string" && geminiModelHeader.trim()) ||
+        config.geminiModel;
 
       const result = await generateAutoCaptions({
         asset: entry.asset,
         filePath: entry.filePath,
         geminiApiKey: key,
+        model,
       });
       return result;
     }

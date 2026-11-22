@@ -91,16 +91,26 @@ export function sanitizeCutProject(
       };
     });
 
-  const sanitizedStickers = (candidate.stickers || []).map((st, idx) => {
-    const startSec = Math.max(0, Math.min(st.startSec, Math.max(0, totalSec - 0.35)));
-    const endSec = Math.min(totalSec, Math.max(startSec + 0.35, st.endSec));
-    return {
-      ...st,
-      id: st.id || `stk-${idx + 1}`,
-      startSec: Number(startSec.toFixed(2)),
-      endSec: Number(endSec.toFixed(2)),
-    };
-  });
+  const sanitizedStickers = (candidate.stickers || [])
+    .filter((st) => {
+      if (!st.assetId) return true;
+      const img = assetsById.get(st.assetId);
+      if (!img || img.kind !== "image") {
+        warnings.push(`Sticker image "${st.assetId}" not found; skipped.`);
+        return false;
+      }
+      return true;
+    })
+    .map((st, idx) => {
+      const startSec = Math.max(0, Math.min(st.startSec, Math.max(0, totalSec - 0.35)));
+      const endSec = Math.min(totalSec, Math.max(startSec + 0.35, st.endSec));
+      return {
+        ...st,
+        id: st.id || `stk-${idx + 1}`,
+        startSec: Number(startSec.toFixed(2)),
+        endSec: Number(endSec.toFixed(2)),
+      };
+    });
 
   const rawAudioTracks = getProjectAudioTracks(candidate);
   const sanitizedAudioTracks: AudioTrack[] = [];

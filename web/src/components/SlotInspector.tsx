@@ -774,11 +774,69 @@ export function SlotInspector({
             ))}
           </div>
 
+          {assets.some((a) => a.kind === "image") && (
+            <div className="flex flex-col gap-1.5 pt-1">
+              <span className="text-[11px] font-semibold text-slate-400">
+                Custom Logo / Image Stickers
+              </span>
+              <div className="grid grid-cols-3 gap-1.5">
+                {assets
+                  .filter((a) => a.kind === "image")
+                  .slice(0, 9)
+                  .map((imgAsset) => (
+                    <button
+                      key={imgAsset.id}
+                      type="button"
+                      onClick={() => {
+                        const id = `stk-${Date.now().toString(36)}`;
+                        const safeStart = Math.max(
+                          0,
+                          Math.min(Math.max(0, project.targetDurationSec - 1), currentTime)
+                        );
+                        const safeEnd = Math.min(
+                          project.targetDurationSec,
+                          Math.max(safeStart + 0.6, safeStart + 3.0)
+                        );
+                        onUpdateStickers([
+                          ...(project.stickers || []),
+                          {
+                            id,
+                            stickerId: "custom-image",
+                            assetId: imgAsset.id,
+                            startSec: Number(safeStart.toFixed(2)),
+                            endSec: Number(safeEnd.toFixed(2)),
+                            xNorm: 0.5,
+                            yNorm: 0.28,
+                            scale: 1,
+                            rotationDeg: 0,
+                          },
+                        ]);
+                        onSelectSticker(id);
+                      }}
+                      className="flex flex-col items-center gap-1 rounded-xl border border-slate-800 bg-[#111520] p-1.5 hover:border-emerald-400"
+                    >
+                      <img
+                        src={imgAsset.thumbnailUrl ?? imgAsset.url}
+                        alt={imgAsset.originalName}
+                        className="size-8 rounded object-contain"
+                      />
+                      <span className="w-full truncate text-[10px] text-slate-300">
+                        {imgAsset.originalName}
+                      </span>
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
+
           {selectedSticker && (
             <div className="flex flex-col gap-1.5 rounded-xl border border-emerald-500/40 bg-[#111520] p-2.5">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-emerald-200">
-                  Sticker: {selectedSticker.stickerId}
+                <span className="truncate font-bold text-emerald-200">
+                  Sticker:{" "}
+                  {selectedSticker.assetId
+                    ? (assetsById.get(selectedSticker.assetId)?.originalName ?? "Image")
+                    : selectedSticker.stickerId}
                 </span>
                 <button
                   type="button"

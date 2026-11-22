@@ -291,12 +291,16 @@ interface SettingsModalProps {
   open: boolean;
   onClose: () => void;
   anthropicKey: string;
+  anthropicModel: string;
   anthropicWorkspaceId: string;
   geminiKey: string;
+  geminiModel: string;
   onSaveKeys: (keys: {
     anthropicKey: string;
+    anthropicModel: string;
     anthropicWorkspaceId: string;
     geminiKey: string;
+    geminiModel: string;
   }) => void;
   health: HealthResponse | null;
 }
@@ -305,21 +309,30 @@ export function SettingsModal({
   open,
   onClose,
   anthropicKey,
+  anthropicModel,
   anthropicWorkspaceId,
   geminiKey,
+  geminiModel,
   onSaveKeys,
   health,
 }: SettingsModalProps) {
   const dialogRef = useDialogModal(open, onClose);
   const [draftAnthropic, setDraftAnthropic] = useState(anthropicKey);
+  const [draftAnthropicModel, setDraftAnthropicModel] = useState(anthropicModel);
   const [draftWorkspace, setDraftWorkspace] = useState(anthropicWorkspaceId);
   const [draftGemini, setDraftGemini] = useState(geminiKey);
+  const [draftGeminiModel, setDraftGeminiModel] = useState(geminiModel);
 
   useEffect(() => {
     setDraftAnthropic(anthropicKey);
+    setDraftAnthropicModel(anthropicModel);
     setDraftWorkspace(anthropicWorkspaceId);
     setDraftGemini(geminiKey);
-  }, [anthropicKey, anthropicWorkspaceId, geminiKey, open]);
+    setDraftGeminiModel(geminiModel);
+  }, [anthropicKey, anthropicModel, anthropicWorkspaceId, geminiKey, geminiModel, open]);
+
+  const activeClaudeModel = draftAnthropicModel.trim() || health?.anthropicModel || "claude-sonnet-5-5";
+  const activeGeminiModel = draftGeminiModel.trim() || health?.geminiModel || "gemini-4-hydrogen";
 
   return (
     <dialog
@@ -342,7 +355,7 @@ export function SettingsModal({
         </button>
       </div>
 
-      <div className="flex flex-col gap-3.5 text-xs">
+      <div className="flex flex-col gap-3 text-xs">
         <div className="rounded-xl border border-slate-800 bg-[#090b10] p-3 text-slate-300">
           <div className="flex justify-between py-0.5">
             <span>Server FFmpeg Engine</span>
@@ -351,22 +364,30 @@ export function SettingsModal({
             </span>
           </div>
           <div className="flex justify-between py-0.5">
-            <span>Claude ({health?.anthropicModel || "claude-sonnet-5-5"})</span>
-            <span className={health?.anthropicConfigured ? "text-emerald-400" : "text-amber-300"}>
-              {health?.anthropicConfigured ? "Configured in .env" : "Not set"}
+            <span>Claude ({activeClaudeModel})</span>
+            <span className={draftAnthropic.trim() || health?.anthropicConfigured ? "text-emerald-400" : "text-amber-300"}>
+              {draftAnthropic.trim()
+                ? "Browser BYOK"
+                : health?.anthropicConfigured
+                  ? "Configured in .env"
+                  : "Not set"}
             </span>
           </div>
           <div className="flex justify-between py-0.5">
-            <span>Gemini ({health?.geminiModel || "gemini-4-hydrogen"})</span>
-            <span className={health?.geminiConfigured ? "text-emerald-400" : "text-amber-300"}>
-              {health?.geminiConfigured ? "Configured in .env" : "Not set"}
+            <span>Gemini ({activeGeminiModel})</span>
+            <span className={draftGemini.trim() || health?.geminiConfigured ? "text-emerald-400" : "text-amber-300"}>
+              {draftGemini.trim()
+                ? "Browser BYOK"
+                : health?.geminiConfigured
+                  ? "Configured in .env"
+                  : "Not set"}
             </span>
           </div>
         </div>
 
         <label className="flex flex-col gap-1">
           <span className="font-semibold text-slate-200">
-            Optional Browser Anthropic Key (Claude Sonnet 5.5)
+            Optional Browser Anthropic Key
           </span>
           <input
             type="password"
@@ -377,34 +398,64 @@ export function SettingsModal({
           />
         </label>
 
-        <label className="flex flex-col gap-1">
-          <span className="font-semibold text-slate-200">
-            Optional Anthropic Workspace ID (for sk-ant-usr- keys)
-          </span>
-          <input
-            type="text"
-            value={draftWorkspace}
-            onChange={(e) => setDraftWorkspace(e.target.value)}
-            placeholder="wrkspc_... (auto-detected if blank)"
-            className="rounded-xl border border-slate-700 bg-[#090b10] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500"
-          />
-        </label>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label className="flex flex-col gap-1">
+            <span className="font-semibold text-slate-200">
+              Claude Model ID
+            </span>
+            <input
+              type="text"
+              value={draftAnthropicModel}
+              onChange={(e) => setDraftAnthropicModel(e.target.value)}
+              placeholder={health?.anthropicModel || "claude-sonnet-5-5"}
+              className="rounded-xl border border-slate-700 bg-[#090b10] px-3 py-1.5 text-xs text-slate-100 placeholder:text-slate-500"
+            />
+          </label>
 
-        <label className="flex flex-col gap-1">
-          <span className="font-semibold text-slate-200">
-            Optional Browser Gemini API Key
-          </span>
-          <input
-            type="password"
-            value={draftGemini}
-            onChange={(e) => setDraftGemini(e.target.value)}
-            placeholder="AIza... (stored only in your browser)"
-            className="rounded-xl border border-slate-700 bg-[#090b10] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500"
-          />
-          <span className="text-[11px] text-slate-400">
-            Leave blank to use server `.env` or built-in Offline Smart Auto-Edit.
-          </span>
-        </label>
+          <label className="flex flex-col gap-1">
+            <span className="font-semibold text-slate-200">
+              Anthropic Workspace ID
+            </span>
+            <input
+              type="text"
+              value={draftWorkspace}
+              onChange={(e) => setDraftWorkspace(e.target.value)}
+              placeholder="wrkspc_... (auto if blank)"
+              className="rounded-xl border border-slate-700 bg-[#090b10] px-3 py-1.5 text-xs text-slate-100 placeholder:text-slate-500"
+            />
+          </label>
+        </div>
+
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label className="flex flex-col gap-1">
+            <span className="font-semibold text-slate-200">
+              Optional Browser Gemini Key
+            </span>
+            <input
+              type="password"
+              value={draftGemini}
+              onChange={(e) => setDraftGemini(e.target.value)}
+              placeholder="AIza... (browser only)"
+              className="rounded-xl border border-slate-700 bg-[#090b10] px-3 py-1.5 text-xs text-slate-100 placeholder:text-slate-500"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="font-semibold text-slate-200">
+              Gemini Model ID
+            </span>
+            <input
+              type="text"
+              value={draftGeminiModel}
+              onChange={(e) => setDraftGeminiModel(e.target.value)}
+              placeholder={health?.geminiModel || "gemini-4-hydrogen"}
+              className="rounded-xl border border-slate-700 bg-[#090b10] px-3 py-1.5 text-xs text-slate-100 placeholder:text-slate-500"
+            />
+          </label>
+        </div>
+        <span className="text-[11px] text-slate-400">
+          Leave blank to use server `.env` defaults or built-in Offline Smart Auto-Edit.
+        </span>
 
         <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-3 text-[11px] text-cyan-200">
           <strong>Phone & Laptop Tip:</strong> Open this same network URL on your phone browser and choose{" "}
@@ -424,8 +475,10 @@ export function SettingsModal({
             onClick={() => {
               onSaveKeys({
                 anthropicKey: draftAnthropic.trim(),
+                anthropicModel: draftAnthropicModel.trim(),
                 anthropicWorkspaceId: draftWorkspace.trim(),
                 geminiKey: draftGemini.trim(),
+                geminiModel: draftGeminiModel.trim(),
               });
               dialogRef.current?.close();
             }}
