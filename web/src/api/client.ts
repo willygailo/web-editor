@@ -225,6 +225,7 @@ export function subscribeRenderEvents(
   };
   es.onerror = () => {
     es.close();
+    onError?.(new Error("Render event stream disconnected"));
   };
   return () => es.close();
 }

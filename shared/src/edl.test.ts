@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { computeTimelineLayout, getAspectDimensions } from "./edl.js";
+import {
+  buildProjectFromTemplate,
+  CUT_TEMPLATE_PRESETS,
+  extractTemplateFromProject,
+  getTemplatePresetById,
+} from "./templates.js";
 
 describe("computeTimelineLayout", () => {
   it("computes cumulative start/end timestamps with xfade overlap clamped safely", () => {
@@ -69,5 +75,80 @@ describe("computeTimelineLayout", () => {
     expect(getAspectDimensions("9:16", "1080p")).toEqual({ width: 1080, height: 1920 });
     expect(getAspectDimensions("16:9", "720p")).toEqual({ width: 1280, height: 720 });
     expect(getAspectDimensions("1:1", "1080p")).toEqual({ width: 1080, height: 1080 });
+  });
+
+  it("extracts reusable custom templates with stickers/adjustments and rebuilds them cleanly", () => {
+    const assetsById = new Map([
+      [
+        "clip-1",
+        {
+          id: "clip-1",
+          filename: "clip1.mp4",
+          originalName: "Clip 1",
+          kind: "video" as const,
+          mimeType: "video/mp4",
+          url: "/api/media/clip-1/stream",
+          durationSec: 4,
+          hasAudio: false,
+          beatMarkersSec: [],
+          energyPeaksSec: [],
+          silenceRanges: [],
+          isBuiltIn: false,
+        },
+      ],
+    ]);
+
+    const preset = getTemplatePresetById("hype-zoom");
+    const built = buildProjectFromTemplate({
+      template: preset,
+      slotAssetIds: ["clip-1"],
+      assetsById,
+      customTexts: ["MANILA DROP"],
+      projectId: "proj-1",
+    });
+
+    expect(built.clips.length).toBe(preset.slots.length);
+    expect(built.overlays[0]?.text).toBe("MANILA DROP");
+
+    const customized = {
+      ...built,
+      clips: built.clips.map((c, idx) =>
+        idx === 0
+          ? {
+              ...c,
+              reversed: true,
+              adjust: { brightness: 0.1, contrast: 0.12, saturation: 0.2, warmth: 0, vignette: 0.2 },
+            }
+          : c
+      ),
+      stickers: [
+        {
+          id: "stk-1",
+          stickerId: "fire",
+          startSec: 0,
+          endSec: 2,
+          xNorm: 0.5,
+          yNorm: 0.3,
+          scale: 1.2,
+          rotationDeg: 0,
+        },
+      ],
+    };
+
+    const extracted = { ...extractTemplateFromProject(customized, "Custom Fire"), id: "custom-fire" };
+    const resolved = getTemplatePresetById("custom-fire", [extracted, ...CUT_TEMPLATE_PRESETS]);
+    expect(resolved.id).toBe("custom-fire");
+    expect(resolved.stickers?.length).toBe(1);
+    expect(resolved.slots[0]?.reversed).toBe(true);
+
+    const rebuilt = buildProjectFromTemplate({
+      template: resolved,
+      slotAssetIds: ["clip-1"],
+      assetsById,
+      projectId: "proj-2",
+    });
+    expect(rebuilt.clips[0]?.reversed).toBe(true);
+    expect(rebuilt.stickers.length).toBe(1);
+    expect(rebuilt.clips[0]?.adjust?.brightness).toBe(0.1);
   });
 });

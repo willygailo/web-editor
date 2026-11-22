@@ -32,6 +32,7 @@ export function TemplateDrawer({
 }: TemplateDrawerProps) {
   const [tplName, setTplName] = useState("");
   const [saving, setSaving] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const handleSave = async () => {
     if (!project) return;
@@ -106,21 +107,29 @@ export function TemplateDrawer({
                 accept=".json,application/json"
                 className="hidden"
                 onChange={async (e) => {
+                  setImportError(null);
                   const file = e.target.files?.[0];
                   if (!file) return;
                   try {
                     const text = await file.text();
                     const raw = JSON.parse(text) as { project?: unknown };
                     const parsed = CutProjectSchema.safeParse(raw.project ?? raw);
-                    if (parsed.success) onImportProjectJson(parsed.data);
+                    if (parsed.success) {
+                      onImportProjectJson(parsed.data);
+                    } else {
+                      setImportError("Invalid .cutflow.json template structure.");
+                    }
                   } catch {
-                    // ignore invalid import
+                    setImportError("Unable to parse JSON file.");
                   }
                   e.target.value = "";
                 }}
               />
             </label>
           </div>
+          {importError && (
+            <p className="text-[11px] text-rose-300">{importError}</p>
+          )}
         </section>
       )}
 
@@ -164,9 +173,8 @@ export function TemplateDrawer({
             <div className="flex gap-2 pt-1">
               <button
                 type="button"
-                disabled={disabled}
                 onClick={() => onUseTemplateModal(tpl)}
-                className="inline-flex flex-1 items-center justify-center gap-1 rounded-xl border border-cyan-400/50 bg-cyan-500/15 px-3 py-1.5 text-[11px] font-bold text-cyan-200 hover:bg-cyan-500/25 disabled:opacity-45"
+                className="inline-flex flex-1 items-center justify-center gap-1 rounded-xl border border-cyan-400/50 bg-cyan-500/15 px-3 py-1.5 text-[11px] font-bold text-cyan-200 hover:bg-cyan-500/25"
               >
                 <Layers className="size-3.5" aria-hidden="true" />
                 Use Template

@@ -1,4 +1,4 @@
-import type { AutoEditRequest, AutoEditResponse, MediaAsset } from "@cutflow/shared";
+import { CUT_TEMPLATE_PRESETS, type AutoEditRequest, type AutoEditResponse, type CutTemplatePreset, type MediaAsset } from "@cutflow/shared";
 import type { ServerConfig } from "../config.js";
 import { generateAnthropicCutProject } from "./anthropic.js";
 import { generateGeminiCutProject } from "./gemini.js";
@@ -12,6 +12,7 @@ export async function runAutoEditDirector(params: {
   config: ServerConfig;
   assetsById: Map<string, MediaAsset>;
   filePathsById: Map<string, string>;
+  templates?: CutTemplatePreset[];
 }): Promise<AutoEditResponse> {
   const {
     request,
@@ -21,6 +22,7 @@ export async function runAutoEditDirector(params: {
     config,
     assetsById,
     filePathsById,
+    templates = CUT_TEMPLATE_PRESETS,
   } = params;
 
   const effectiveAnthropicKey = (userAnthropicKey || config.anthropicApiKey || "").trim();
@@ -32,7 +34,7 @@ export async function runAutoEditDirector(params: {
   const effectiveGeminiKey = (userGeminiKey || config.geminiApiKey || "").trim();
 
   if (request.mode === "offline") {
-    return generateOfflineCutProject(request, assetsById);
+    return generateOfflineCutProject(request, assetsById, templates);
   }
 
   const runClaude = async () =>
@@ -43,6 +45,7 @@ export async function runAutoEditDirector(params: {
       request,
       assetsById,
       filePathsById,
+      templates,
     });
 
   const runGemini = async () =>
@@ -53,11 +56,12 @@ export async function runAutoEditDirector(params: {
       assetsById,
       filePathsById,
       proxiesDir: config.proxiesDir,
+      templates,
     });
 
   if (request.mode === "claude") {
     if (!effectiveAnthropicKey) {
-      const fallback = generateOfflineCutProject(request, assetsById);
+      const fallback = generateOfflineCutProject(request, assetsById, templates);
       return {
         project: fallback.project,
         warnings: [
@@ -70,7 +74,7 @@ export async function runAutoEditDirector(params: {
       return await runClaude();
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
-      const fallback = generateOfflineCutProject(request, assetsById);
+      const fallback = generateOfflineCutProject(request, assetsById, templates);
       return {
         project: fallback.project,
         warnings: [
@@ -83,7 +87,7 @@ export async function runAutoEditDirector(params: {
 
   if (request.mode === "gemini") {
     if (!effectiveGeminiKey) {
-      const fallback = generateOfflineCutProject(request, assetsById);
+      const fallback = generateOfflineCutProject(request, assetsById, templates);
       return {
         project: fallback.project,
         warnings: [
@@ -96,7 +100,7 @@ export async function runAutoEditDirector(params: {
       return await runGemini();
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
-      const fallback = generateOfflineCutProject(request, assetsById);
+      const fallback = generateOfflineCutProject(request, assetsById, templates);
       return {
         project: fallback.project,
         warnings: [
@@ -130,7 +134,7 @@ export async function runAutoEditDirector(params: {
     }
   }
 
-  const fallback = generateOfflineCutProject(request, assetsById);
+  const fallback = generateOfflineCutProject(request, assetsById, templates);
   return {
     project: fallback.project,
     warnings: [

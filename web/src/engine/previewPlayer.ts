@@ -273,9 +273,14 @@ export class PreviewCompositor {
   private images = new Map<string, HTMLImageElement>();
   private stickerImages = new Map<string, HTMLImageElement>();
   private audioElements = new Map<string, HTMLAudioElement>();
+  private onFrameReady?: () => void;
 
   constructor() {
     this.videoPair = [this.createVideoEl(), this.createVideoEl()];
+  }
+
+  setOnFrameReady(cb?: () => void): void {
+    this.onFrameReady = cb;
   }
 
   private createVideoEl(): HTMLVideoElement {
@@ -284,6 +289,9 @@ export class PreviewCompositor {
     v.muted = true;
     v.preload = "auto";
     v.crossOrigin = "anonymous";
+    const notify = () => this.onFrameReady?.();
+    v.addEventListener("loadeddata", notify);
+    v.addEventListener("seeked", notify);
     return v;
   }
 
@@ -292,6 +300,7 @@ export class PreviewCompositor {
     if (existing) return existing;
     const img = new Image();
     img.crossOrigin = "anonymous";
+    img.onload = () => this.onFrameReady?.();
     img.src = asset.url;
     this.images.set(asset.id, img);
     return img;
@@ -302,6 +311,7 @@ export class PreviewCompositor {
     if (existing) return existing;
     const item = getStickerById(stickerId);
     const img = new Image();
+    img.onload = () => this.onFrameReady?.();
     img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(item.svg)}`;
     this.stickerImages.set(stickerId, img);
     return img;
@@ -330,7 +340,8 @@ export class PreviewCompositor {
 
     if (video.readyState >= 1) {
       const drift = Math.abs(video.currentTime - sourceTime);
-      if (drift > (reversed ? 0.08 : isPlaying ? 0.25 : 0.06)) {
+      const threshold = reversed ? 0.055 : isPlaying ? 0.25 : 0.06;
+      if (drift > threshold && !(reversed && isPlaying && video.seeking)) {
         try {
           video.currentTime = Math.max(0, sourceTime);
         } catch {
@@ -376,9 +387,11 @@ export class PreviewCompositor {
         el = document.createElement("audio");
         el.crossOrigin = "anonymous";
         el.preload = "auto";
+        el.dataset.assetUrl = asset.url;
         el.src = asset.url;
         this.audioElements.set(track.id, el);
-      } else if (!el.src.endsWith(asset.url)) {
+      } else if (el.dataset.assetUrl !== asset.url) {
+        el.dataset.assetUrl = asset.url;
         el.src = asset.url;
         el.load();
       }
@@ -408,6 +421,11 @@ export class PreviewCompositor {
         track.kind === "bgm"
           ? ((track.startOffsetSec || 0) + localT) % Math.max(0.5, asset.durationSec)
           : Math.min(asset.durationSec, (track.startOffsetSec || 0) + localT);
+
+      if (track.kind !== "bgm" && targetAudioTime >= asset.durationSec - 0.04) {
+        if (!el.paused) el.pause();
+        continue;
+      }
 
       if (el.readyState >= 1) {
         const drift = Math.abs(el.currentTime - targetAudioTime);

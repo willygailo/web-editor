@@ -1,11 +1,14 @@
 import { z } from "zod";
 import {
   AspectRatioSchema,
+  ClipAdjustSchema,
+  ClipTransformSchema,
   computeTimelineLayout,
   FilterPresetSchema,
   MotionPresetSchema,
   OverlayPositionSchema,
   OverlayStyleSchema,
+  StickerOverlaySchema,
   TransitionTypeSchema,
   type AspectRatio,
   type AudioTrack,
@@ -16,6 +19,7 @@ import {
   type MotionPreset,
   type OverlayPosition,
   type OverlayStyle,
+  type StickerOverlay,
   type TextOverlay,
   type TransitionType,
 } from "./edl.js";
@@ -27,6 +31,9 @@ export const TemplateSlotBlueprintSchema = z.object({
   transitionDurationSec: z.number().min(0).max(0.8).default(0.25),
   filter: FilterPresetSchema.default("none"),
   speed: z.number().min(0.5).max(2.5).default(1),
+  reversed: z.boolean().optional(),
+  adjust: ClipAdjustSchema.optional(),
+  transform: ClipTransformSchema.optional(),
   label: z.string().default("Clip"),
 });
 export type TemplateSlotBlueprint = z.infer<typeof TemplateSlotBlueprintSchema>;
@@ -37,8 +44,18 @@ export const TemplateOverlayBlueprintSchema = z.object({
   endSec: z.number().positive(),
   position: OverlayPositionSchema.default("center"),
   style: OverlayStyleSchema.default("capcut-pop"),
+  xNorm: z.number().min(0.05).max(0.95).optional(),
+  yNorm: z.number().min(0.05).max(0.95).optional(),
+  scale: z.number().min(0.4).max(2.5).optional(),
+  rotationDeg: z.number().min(-180).max(180).optional(),
+  color: z.string().optional(),
+  bgColor: z.string().optional(),
+  animation: z.enum(["none", "pop", "fade", "slide-up"]).optional(),
 });
 export type TemplateOverlayBlueprint = z.infer<typeof TemplateOverlayBlueprintSchema>;
+
+export const TemplateStickerBlueprintSchema = StickerOverlaySchema.omit({ id: true });
+export type TemplateStickerBlueprint = z.infer<typeof TemplateStickerBlueprintSchema>;
 
 export const CutTemplatePresetSchema = z.object({
   id: z.string().min(1),
@@ -46,7 +63,7 @@ export const CutTemplatePresetSchema = z.object({
   tagline: z.string().max(180),
   badge: z.string().max(40),
   defaultAspectRatio: AspectRatioSchema,
-  defaultDurationSec: z.number().min(3).max(180),
+  defaultDurationSec: z.number().min(1).max(180),
   bpm: z.number().min(50).max(200),
   minClipSec: z.number().min(0.4).max(10),
   maxClipSec: z.number().min(0.5).max(15),
@@ -61,6 +78,7 @@ export const CutTemplatePresetSchema = z.object({
   defaultAudioId: z.string().optional(),
   slots: z.array(TemplateSlotBlueprintSchema).default([]),
   overlays: z.array(TemplateOverlayBlueprintSchema).default([]),
+  stickers: z.array(TemplateStickerBlueprintSchema).optional(),
   isCustom: z.boolean().default(false),
 });
 export type CutTemplatePreset = z.infer<typeof CutTemplatePresetSchema>;
@@ -221,8 +239,12 @@ export const CUT_TEMPLATE_PRESETS: CutTemplatePreset[] = [
   },
 ];
 
-export function getTemplatePresetById(id?: string): CutTemplatePreset {
+export function getTemplatePresetById(
+  id?: string,
+  allTemplates: CutTemplatePreset[] = CUT_TEMPLATE_PRESETS
+): CutTemplatePreset {
   return (
+    allTemplates.find((preset) => preset.id === id) ??
     CUT_TEMPLATE_PRESETS.find((preset) => preset.id === id) ??
     CUT_TEMPLATE_PRESETS[0]
   );
@@ -294,12 +316,15 @@ export function buildProjectFromTemplate(params: {
       filter: bp.filter,
       muteOriginalAudio: Boolean(audioAsset),
       volume: audioAsset ? 0 : 1,
-      reversed: false,
+      reversed: Boolean(bp.reversed && asset.kind === "video"),
+      adjust: bp.adjust,
+      transform: bp.transform,
       label: bp.label || `Slot ${idx + 1}`,
     };
   });
 
   const layout = computeTimelineLayout({ clips });
+  const totalSec = Math.max(0.6, layout.totalDurationSec);
 
   const overlays: TextOverlay[] = (
     template.overlays.length > 0
@@ -308,22 +333,41 @@ export function buildProjectFromTemplate(params: {
           {
             text: template.defaultHookText,
             startSec: 0.2,
-            endSec: Math.min(layout.totalDurationSec, 2.8),
+            endSec: Math.min(totalSec, 2.8),
             position: "center" as OverlayPosition,
             style: template.overlayStyle as OverlayStyle,
           },
         ]
-  ).map((ov, idx) => ({
-    id: `txt-${idx + 1}`,
-    text: (customTexts?.[idx]?.trim() || ov.text).slice(0, 160),
-    startSec: Math.min(layout.totalDurationSec - 0.5, ov.startSec),
-    endSec: Math.min(layout.totalDurationSec, Math.max(ov.startSec + 0.5, ov.endSec)),
-    position: ov.position,
-    style: ov.style,
-    scale: 1,
-    rotationDeg: 0,
-    animation: "pop",
-  }));
+  ).map((ov, idx) => {
+    const startSec = Number(Math.max(0, Math.min(totalSec - 0.4, ov.startSec)).toFixed(2));
+    const endSec = Number(Math.min(totalSec, Math.max(startSec + 0.4, ov.endSec)).toFixed(2));
+    return {
+      id: `txt-${idx + 1}`,
+      text: (customTexts?.[idx]?.trim() || ov.text).slice(0, 160),
+      startSec,
+      endSec,
+      position: ov.position,
+      style: ov.style,
+      xNorm: ov.xNorm,
+      yNorm: ov.yNorm,
+      scale: ov.scale ?? 1,
+      rotationDeg: ov.rotationDeg ?? 0,
+      color: ov.color,
+      bgColor: ov.bgColor,
+      animation: ov.animation ?? "pop",
+    };
+  });
+
+  const stickers: StickerOverlay[] = (template.stickers || []).map((st, idx) => {
+    const startSec = Number(Math.max(0, Math.min(totalSec - 0.35, st.startSec)).toFixed(2));
+    const endSec = Number(Math.min(totalSec, Math.max(startSec + 0.35, st.endSec)).toFixed(2));
+    return {
+      ...st,
+      id: `stk-${idx + 1}`,
+      startSec,
+      endSec,
+    };
+  });
 
   const resolvedAudio =
     audioAsset ??
@@ -338,7 +382,7 @@ export function buildProjectFromTemplate(params: {
             assetId: resolvedAudio.id,
             title: resolvedAudio.originalName,
             timelineStartSec: 0,
-            durationSec: layout.totalDurationSec,
+            durationSec: totalSec,
             startOffsetSec: 0,
             volume: 0.85,
             fadeInSec: 0.25,
@@ -357,10 +401,10 @@ export function buildProjectFromTemplate(params: {
     modeUsed: "template",
     aspectRatio: template.defaultAspectRatio as AspectRatio,
     fps: 30,
-    targetDurationSec: layout.totalDurationSec,
+    targetDurationSec: totalSec,
     clips,
     overlays,
-    stickers: [],
+    stickers,
     audioTrack: audioTracks[0],
     audioTracks,
   };
@@ -401,14 +445,27 @@ export function extractTemplateFromProject(
       transitionDurationSec: sl.slot.transitionDurationSec,
       filter: sl.slot.filter as FilterPreset,
       speed: sl.slot.speed,
+      reversed: sl.slot.reversed,
+      adjust: sl.slot.adjust,
+      transform: sl.slot.transform,
       label: sl.slot.label || `Slot ${idx + 1}`,
     })),
-    overlays: project.overlays.map((o) => ({
-      text: o.text,
-      startSec: o.startSec,
-      endSec: o.endSec,
-      position: o.position,
-      style: o.style,
-    })),
+    overlays: project.overlays
+      .filter((o) => o.text.trim().length > 0)
+      .map((o) => ({
+        text: o.text.trim(),
+        startSec: o.startSec,
+        endSec: o.endSec,
+        position: o.position,
+        style: o.style,
+        xNorm: o.xNorm,
+        yNorm: o.yNorm,
+        scale: o.scale,
+        rotationDeg: o.rotationDeg,
+        color: o.color,
+        bgColor: o.bgColor,
+        animation: o.animation,
+      })),
+    stickers: (project.stickers || []).map(({ id: _ignored, ...rest }) => rest),
   };
 }

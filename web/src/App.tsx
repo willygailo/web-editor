@@ -119,7 +119,7 @@ export function App() {
     })();
   }, []);
 
-  // Desktop & keyboard shortcuts (Undo/Redo/Split/Play-Pause)
+  // Desktop & keyboard shortcuts (Undo/Redo/Split/Play-Pause/Delete)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -135,11 +135,19 @@ export function App() {
       } else if (e.key.toLowerCase() === "s" && project) {
         e.preventDefault();
         store.splitAtPlayhead(currentTime);
+      } else if ((e.key === "Delete" || e.key === "Backspace") && project) {
+        e.preventDefault();
+        store.deleteSelection();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [project, currentTime, store]);
+
+  useEffect(() => {
+    if (!project) return;
+    setCurrentTime((t) => (t > project.targetDurationSec ? project.targetDurationSec : t));
+  }, [project?.targetDurationSec]);
 
   const handleSaveKeys = (keys: {
     anthropicKey: string;
@@ -173,6 +181,9 @@ export function App() {
       const addedVisuals = added.filter((a) => a.kind !== "audio").map((a) => a.id);
       if (addedVisuals.length > 0) {
         setSelectedVisualIds((prev) => Array.from(new Set([...prev, ...addedVisuals])));
+      } else if (!autoAudioKind && added.some((a) => a.kind === "audio")) {
+        setDesktopLeftTab("audio");
+        setMobilePanel("audio");
       }
       if (autoAudioKind) {
         const audio = added.find((a) => a.kind === "audio");
@@ -234,6 +245,16 @@ export function App() {
     setIsGenerating(true);
     setIsPlaying(false);
 
+    const sanitizedPrev =
+      project && !templateOverride
+        ? {
+            ...project,
+            overlays: project.overlays
+              .map((o) => ({ ...o, text: o.text.trim() }))
+              .filter((o) => o.text.length > 0),
+          }
+        : undefined;
+
     try {
       const res = await runAutoEdit(
         {
@@ -244,7 +265,7 @@ export function App() {
           aspectRatio: templateOverride?.defaultAspectRatio ?? project?.aspectRatio,
           targetDurationSec: templateOverride?.defaultDurationSec,
           mode,
-          previousProject: templateOverride ? undefined : project ?? undefined,
+          previousProject: sanitizedPrev,
         },
         {
           anthropicApiKey: anthropicKey,
@@ -499,6 +520,8 @@ export function App() {
               onUploadAudio={(files, kind) => handleUploadFiles(files, kind)}
               onExtractAudio={handleExtractAudio}
               onSnapCutsToBeats={() => store.snapCutsToBeats(assetsById)}
+              onBeginSlider={store.beginGesture}
+              onEndSlider={store.endGesture}
             />
           )}
 
@@ -516,7 +539,10 @@ export function App() {
               }}
               onSaveCurrentAsTemplate={handleSaveTemplate}
               onDeleteCustomTemplate={handleDeleteTemplate}
-              onImportProjectJson={(imported) => store.loadProject(imported)}
+              onImportProjectJson={(imported) => {
+                store.loadProject(imported);
+                setCurrentTime(0);
+              }}
             />
           )}
         </aside>
@@ -539,19 +565,17 @@ export function App() {
               store.selectSticker(id);
               if (id) setMobilePanel("stickers");
             }}
+            onBeginDrag={store.beginGesture}
+            onEndDrag={store.endGesture}
             onMoveOverlayPos={(id, xNorm, yNorm) => {
-              if (!project) return;
               store.updateOverlays(
-                project.overlays.map((o) => (o.id === id ? { ...o, xNorm, yNorm } : o)),
+                (prev) => prev.map((o) => (o.id === id ? { ...o, xNorm, yNorm } : o)),
                 false
               );
             }}
             onMoveStickerPos={(id, xNorm, yNorm) => {
-              if (!project) return;
               store.updateStickers(
-                (project.stickers || []).map((s) =>
-                  s.id === id ? { ...s, xNorm, yNorm } : s
-                ),
+                (prev) => prev.map((s) => (s.id === id ? { ...s, xNorm, yNorm } : s)),
                 false
               );
             }}
@@ -589,6 +613,8 @@ export function App() {
               onUploadAudio={(files, kind) => handleUploadFiles(files, kind)}
               onExtractAudio={handleExtractAudio}
               onSnapCutsToBeats={() => store.snapCutsToBeats(assetsById)}
+              onBeginSlider={store.beginGesture}
+              onEndSlider={store.endGesture}
             />
           ) : (
             <SlotInspector
@@ -597,6 +623,8 @@ export function App() {
               assets={assets}
               assetsById={assetsById}
               currentTime={currentTime}
+              onBeginSlider={store.beginGesture}
+              onEndSlider={store.endGesture}
               onUpdateSlot={store.updateSlot}
               onReplaceSlotAsset={store.replaceSlotAsset}
               onDuplicateSlot={store.duplicateSlot}
@@ -625,6 +653,8 @@ export function App() {
             onDuplicateSlot={store.duplicateSlot}
             onMoveSlot={store.moveSlot}
             onUpdateSlot={store.updateSlot}
+            onBeginDrag={store.beginGesture}
+            onEndDrag={store.endGesture}
             onSelectSlot={(id) => {
               store.selectSlot(id);
               setMobilePanel("edit");
@@ -742,6 +772,8 @@ export function App() {
                   onUploadAudio={(files, kind) => handleUploadFiles(files, kind)}
                   onExtractAudio={handleExtractAudio}
                   onSnapCutsToBeats={() => store.snapCutsToBeats(assetsById)}
+                  onBeginSlider={store.beginGesture}
+                  onEndSlider={store.endGesture}
                 />
               )}
 
@@ -759,7 +791,10 @@ export function App() {
                   }}
                   onSaveCurrentAsTemplate={handleSaveTemplate}
                   onDeleteCustomTemplate={handleDeleteTemplate}
-                  onImportProjectJson={(imported) => store.loadProject(imported)}
+                  onImportProjectJson={(imported) => {
+                    store.loadProject(imported);
+                    setCurrentTime(0);
+                  }}
                 />
               )}
 
@@ -774,6 +809,8 @@ export function App() {
                   assets={assets}
                   assetsById={assetsById}
                   currentTime={currentTime}
+                  onBeginSlider={store.beginGesture}
+                  onEndSlider={store.endGesture}
                   onUpdateSlot={store.updateSlot}
                   onReplaceSlotAsset={store.replaceSlotAsset}
                   onDuplicateSlot={store.duplicateSlot}

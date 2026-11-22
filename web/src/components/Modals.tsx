@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, Download, Share2, X } from "lucide-react";
 import type { CutProject, HealthResponse, RenderJob } from "@cutflow/shared";
 import { startRender, subscribeRenderEvents } from "../api/client";
@@ -15,23 +15,89 @@ export function ExportModal({ open, onClose, project }: ExportModalProps) {
   const [quality, setQuality] = useState<"720p" | "1080p">("1080p");
   const [job, setJob] = useState<RenderJob | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const cleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (!open) {
+      cleanupRef.current?.();
+      cleanupRef.current = null;
       setJob(null);
       setErr(null);
     }
+    return () => {
+      cleanupRef.current?.();
+      cleanupRef.current = null;
+    };
   }, [open]);
 
   const handleStart = async () => {
     if (!project) return;
+    cleanupRef.current?.();
+    cleanupRef.current = null;
     setErr(null);
+
+    const sanitizedProject: CutProject = {
+      ...project,
+      overlays: project.overlays
+        .map((o) => ({ ...o, text: o.text.trim() }))
+        .filter((o) => o.text.length > 0),
+    };
+
     try {
-      const created = await startRender({ project, quality });
+      const created = await startRender({ project: sanitizedProject, quality });
       setJob(created);
-      subscribeRenderEvents(created.id, (updated) => {
-        setJob(updated);
-      });
+
+      let settled = false;
+      let pollTimer: number | null = null;
+
+      const stopAll = () => {
+        if (pollTimer !== null) {
+          window.clearInterval(pollTimer);
+          pollTimer = null;
+        }
+        unsub();
+      };
+
+      const startPollFallback = () => {
+        if (settled || pollTimer !== null) return;
+        pollTimer = window.setInterval(async () => {
+          try {
+            const res = await fetch(`/api/render/${encodeURIComponent(created.id)}`);
+            if (!res.ok) return;
+            const data = (await res.json()) as { job: RenderJob };
+            setJob(data.job);
+            if (data.job.status === "completed" || data.job.status === "failed") {
+              settled = true;
+              stopAll();
+            }
+          } catch {
+            // keep retrying briefly
+          }
+        }, 900);
+      };
+
+      const unsub = subscribeRenderEvents(
+        created.id,
+        (updated) => {
+          setJob(updated);
+          if (updated.status === "completed" || updated.status === "failed") {
+            settled = true;
+            stopAll();
+          }
+        },
+        () => {
+          startPollFallback();
+        }
+      );
+
+      cleanupRef.current = () => {
+        settled = true;
+        if (pollTimer !== null) {
+          window.clearInterval(pollTimer);
+          pollTimer = null;
+        }
+        unsub();
+      };
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to start export");
     }
@@ -71,7 +137,7 @@ export function ExportModal({ open, onClose, project }: ExportModalProps) {
       </div>
 
       {!project ? (
-        <p className="text-sm text-slate-400">Create an AI edit first before exporting.</p>
+        <p className="text-sm text-slate-400">Create an edit or apply a template first before exporting.</p>
       ) : (
         <div className="flex flex-col gap-4">
           <div className="rounded-xl border border-slate-800 bg-[#090b10] p-3 text-xs text-slate-300">

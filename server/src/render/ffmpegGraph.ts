@@ -312,6 +312,11 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
   if (stickers.length > 0 && builtinsDir) {
     fs.mkdirSync(builtinsDir, { recursive: true });
     stickers.forEach((st, idx) => {
+      if (st.startSec >= finalTotalSec) return;
+      const start = Math.max(0, st.startSec);
+      const end = Math.min(finalTotalSec, st.endSec);
+      if (end <= start) return;
+
       const item = getStickerById(st.stickerId);
       const svgPath = path.join(builtinsDir, `sticker-${item.id}.svg`);
       if (!fs.existsSync(svgPath)) {
@@ -341,7 +346,7 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
 
       const outLabel = `vst${idx}`;
       filterParts.push(
-        `[${currentVideoLabel}][stk${idx}]overlay=x='round(${st.xNorm.toFixed(3)}*W-w/2)':y='round(${st.yNorm.toFixed(3)}*H-h/2)':enable='between(t,${st.startSec.toFixed(2)},${st.endSec.toFixed(2)})'[${outLabel}]`
+        `[${currentVideoLabel}][stk${idx}]overlay=x='round(${st.xNorm.toFixed(3)}*W-w/2)':y='round(${st.yNorm.toFixed(3)}*H-h/2)':enable='between(t,${start.toFixed(2)},${end.toFixed(2)})'[${outLabel}]`
       );
       currentVideoLabel = outLabel;
     });

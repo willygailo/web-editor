@@ -167,7 +167,7 @@ export const CutProjectSchema = z.object({
   modeUsed: z.enum(["claude", "gemini", "offline", "template"]).default("offline"),
   aspectRatio: AspectRatioSchema.default("9:16"),
   fps: z.number().int().min(24).max(60).default(30),
-  targetDurationSec: z.number().min(3).max(180).default(15),
+  targetDurationSec: z.number().min(0.4).max(180).default(15),
   clips: z.array(ClipSlotSchema).min(1),
   overlays: z.array(TextOverlaySchema).default([]),
   stickers: z.array(StickerOverlaySchema).default([]),

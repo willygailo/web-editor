@@ -8,6 +8,7 @@ import {
   type AutoEditRequest,
   type CutProject,
   type CutProjectInput,
+  type CutTemplatePreset,
   type MediaAsset,
 } from "@cutflow/shared";
 import { createGeminiVideoProxy } from "../media/probe.js";
@@ -17,10 +18,7 @@ const EDL_JSON_SCHEMA = {
   type: "object",
   properties: {
     title: { type: "string" },
-    templateId: {
-      type: "string",
-      enum: CUT_TEMPLATE_PRESETS.map((p) => p.id),
-    },
+    templateId: { type: "string" },
     aiSummary: { type: "string" },
     aspectRatio: { type: "string", enum: ["9:16", "16:9", "1:1"] },
     clips: {
@@ -112,8 +110,17 @@ export async function generateGeminiCutProject(params: {
   assetsById: Map<string, MediaAsset>;
   filePathsById: Map<string, string>;
   proxiesDir: string;
+  templates?: CutTemplatePreset[];
 }): Promise<{ project: CutProject; warnings: string[] }> {
-  const { apiKey, model, request, assetsById, filePathsById, proxiesDir } = params;
+  const {
+    apiKey,
+    model,
+    request,
+    assetsById,
+    filePathsById,
+    proxiesDir,
+    templates = CUT_TEMPLATE_PRESETS,
+  } = params;
   const client = new GoogleGenAI({ apiKey });
 
   const visualAssets = request.assetIds
@@ -195,12 +202,13 @@ export async function generateGeminiCutProject(params: {
       beatMarkersSec: a.beatMarkersSec.slice(0, 32),
     }));
 
-    const templateSummary = CUT_TEMPLATE_PRESETS.map((t) => ({
+    const templateSummary = templates.map((t) => ({
       id: t.id,
       name: t.name,
       tagline: t.tagline,
       defaultAspectRatio: t.defaultAspectRatio,
       bpm: t.bpm,
+      isCustom: Boolean(t.isCustom),
     }));
 
     const promptText = [

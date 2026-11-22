@@ -29,6 +29,7 @@ export function MediaBin({
   const [dragging, setDragging] = useState(false);
 
   const visualAssets = assets.filter((a) => a.kind !== "audio");
+  const uploadedAudioCount = assets.filter((a) => a.kind === "audio" && !a.isBuiltIn).length;
 
   return (
     <div className="panel-container flex flex-col gap-3">
@@ -104,6 +105,11 @@ export function MediaBin({
             <Film className="size-3.5 text-cyan-400" aria-hidden="true" />
             Clips ({selectedVisualIds.length}/{visualAssets.length} for AI)
           </span>
+          {uploadedAudioCount > 0 && (
+            <span className="text-[10px] font-medium text-rose-300">
+              +{uploadedAudioCount} audio in Music &amp; SFX
+            </span>
+          )}
         </div>
 
         {visualAssets.length === 0 ? (

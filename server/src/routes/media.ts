@@ -18,16 +18,27 @@ import type { MediaStore } from "../media/store.js";
 function inferMediaKind(mimeType: string, filename: string): MediaKind | null {
   const lowerMime = mimeType.toLowerCase();
   const ext = path.extname(filename).toLowerCase();
-  if (lowerMime.startsWith("video/") || /\.(mp4|mov|webm|mkv|avi|m4v)$/.test(ext)) {
-    return "video";
+  if (lowerMime.startsWith("audio/") || /\.(mp3|wav|m4a|aac|ogg|flac)$/.test(ext)) {
+    return "audio";
   }
   if (lowerMime.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/.test(ext)) {
     return "image";
   }
-  if (lowerMime.startsWith("audio/") || /\.(mp3|wav|m4a|aac|ogg|flac)$/.test(ext)) {
-    return "audio";
+  if (lowerMime.startsWith("video/") || /\.(mp4|mov|webm|mkv|avi|m4v)$/.test(ext)) {
+    return "video";
   }
   return null;
+}
+
+function inferAudioCategory(filename: string): "bgm" | "sfx" | "voiceover" {
+  const lower = filename.toLowerCase();
+  if (lower.startsWith("voiceover-") || lower.includes("voiceover") || lower.includes("-vo-")) {
+    return "voiceover";
+  }
+  if (lower.startsWith("sfx-") || lower.includes("sfx")) {
+    return "sfx";
+  }
+  return "bgm";
 }
 
 export function registerMediaRoutes(
@@ -84,6 +95,7 @@ export function registerMediaRoutes(
           filename: storedFilename,
           originalName: part.filename || storedFilename,
           kind,
+          audioCategory: kind === "audio" ? inferAudioCategory(part.filename || "") : undefined,
           mimeType: part.mimetype || "application/octet-stream",
           url: `/api/media/${id}/stream`,
           thumbnailUrl: hasThumb ? `/api/media/${id}/thumb` : undefined,

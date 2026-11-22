@@ -19,6 +19,8 @@ interface PreviewStageProps {
   onPlayingChange: (playing: boolean) => void;
   onSelectOverlay: (id: string | null) => void;
   onSelectSticker: (id: string | null) => void;
+  onBeginDrag: () => void;
+  onEndDrag: () => void;
   onMoveOverlayPos: (id: string, xNorm: number, yNorm: number) => void;
   onMoveStickerPos: (id: string, xNorm: number, yNorm: number) => void;
   onLoadDemo: () => void;
@@ -43,6 +45,8 @@ export function PreviewStage({
   onPlayingChange,
   onSelectOverlay,
   onSelectSticker,
+  onBeginDrag,
+  onEndDrag,
   onMoveOverlayPos,
   onMoveStickerPos,
   onLoadDemo,
@@ -53,6 +57,14 @@ export function PreviewStage({
   const compositorRef = useRef<PreviewCompositor | null>(null);
   const timeRef = useRef(currentTime);
   timeRef.current = currentTime;
+  const projectRef = useRef(project);
+  projectRef.current = project;
+  const assetsRef = useRef(assetsById);
+  assetsRef.current = assetsById;
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
+  const isPlayingRef = useRef(isPlaying);
+  isPlayingRef.current = isPlaying;
 
   const [liveStatus, setLiveStatus] = useState("");
   const dragStateRef = useRef<{
@@ -68,6 +80,16 @@ export function PreviewStage({
   useEffect(() => {
     const comp = new PreviewCompositor();
     compositorRef.current = comp;
+    comp.setOnFrameReady(() => {
+      if (isPlayingRef.current) return;
+      const canvas = canvasRef.current;
+      const proj = projectRef.current;
+      if (!canvas || !proj) return;
+      comp.renderFrame(canvas, proj, assetsRef.current, timeRef.current, false, {
+        overlayId: selectionRef.current.overlayId,
+        stickerId: selectionRef.current.stickerId,
+      });
+    });
     return () => {
       comp.destroy();
       compositorRef.current = null;
@@ -90,17 +112,20 @@ export function PreviewStage({
     });
   }, [project, assetsById, currentTime, isPlaying, selection.overlayId, selection.stickerId]);
 
+  const hasProject = Boolean(project);
   useEffect(() => {
-    if (!isPlaying) return;
+    if (!isPlaying || !hasProject) return;
     const canvas = canvasRef.current;
     const comp = compositorRef.current;
-    if (!canvas || !comp || !project) return;
+    if (!canvas || !comp) return;
 
-    const total = Math.max(0.5, computeTimelineLayout(project).totalDurationSec);
     let rafId = 0;
     let lastPerf = performance.now();
 
     const tick = (now: number) => {
+      const proj = projectRef.current;
+      if (!proj) return;
+      const total = Math.max(0.5, computeTimelineLayout(proj).totalDurationSec);
       const dt = Math.min(0.1, (now - lastPerf) / 1000);
       lastPerf = now;
 
@@ -109,26 +134,28 @@ export function PreviewStage({
       timeRef.current = nextTime;
       onTimeChange(nextTime);
 
-      comp.syncAudio(project, assetsById, nextTime, true);
-      comp.renderFrame(canvas, project, assetsById, nextTime, true, {
-        overlayId: selection.overlayId,
-        stickerId: selection.stickerId,
+      comp.syncAudio(proj, assetsRef.current, nextTime, true);
+      comp.renderFrame(canvas, proj, assetsRef.current, nextTime, true, {
+        overlayId: selectionRef.current.overlayId,
+        stickerId: selectionRef.current.stickerId,
       });
       rafId = requestAnimationFrame(tick);
     };
 
-    comp.syncAudio(project, assetsById, timeRef.current, true);
-    comp.renderFrame(canvas, project, assetsById, timeRef.current, true, {
-      overlayId: selection.overlayId,
-      stickerId: selection.stickerId,
-    });
+    if (projectRef.current) {
+      comp.syncAudio(projectRef.current, assetsRef.current, timeRef.current, true);
+      comp.renderFrame(canvas, projectRef.current, assetsRef.current, timeRef.current, true, {
+        overlayId: selectionRef.current.overlayId,
+        stickerId: selectionRef.current.stickerId,
+      });
+    }
     rafId = requestAnimationFrame(tick);
 
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
       comp.pauseAll();
     };
-  }, [project, assetsById, isPlaying, onTimeChange, selection.overlayId, selection.stickerId]);
+  }, [isPlaying, hasProject, onTimeChange]);
 
   const handleCanvasPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (e.button !== 0 || !project || !canvasRef.current) return;
@@ -143,6 +170,7 @@ export function PreviewStage({
     }
 
     canvasRef.current.setPointerCapture(e.pointerId);
+    onBeginDrag();
 
     if (hit.kind === "sticker") {
       onSelectSticker(hit.id);
@@ -199,6 +227,7 @@ export function PreviewStage({
 
   const handleCanvasPointerUp = () => {
     const drag = dragStateRef.current;
+    onEndDrag();
     if (drag?.moved) {
       setLiveStatus(`${drag.kind === "overlay" ? "Text" : "Sticker"} repositioned on canvas`);
       window.setTimeout(() => setLiveStatus(""), 900);

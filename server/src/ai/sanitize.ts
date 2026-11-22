@@ -72,7 +72,7 @@ export function sanitizeCutProject(
   });
 
   const layout = computeTimelineLayout({ clips: sanitizedClips });
-  const totalSec = Math.max(1, layout.totalDurationSec);
+  const totalSec = Math.max(0.4, layout.totalDurationSec);
 
   const sanitizedOverlays = (candidate.overlays || [])
     .filter((o) => o.text.trim().length > 0)

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import {
+  buildProjectFromTemplate,
   computeTimelineLayout,
   CUT_TEMPLATE_PRESETS,
   getTemplatePresetById,
@@ -14,14 +15,18 @@ import {
 } from "@cutflow/shared";
 import { sanitizeCutProject } from "./sanitize.js";
 
-function pickTemplateFromPrompt(prompt: string, explicitId?: string): CutTemplatePreset {
-  if (explicitId) return getTemplatePresetById(explicitId);
+function pickTemplateFromPrompt(
+  prompt: string,
+  explicitId: string | undefined,
+  allTemplates: CutTemplatePreset[]
+): CutTemplatePreset {
+  if (explicitId) return getTemplatePresetById(explicitId, allTemplates);
   const lower = prompt.toLowerCase();
 
-  let bestPreset = CUT_TEMPLATE_PRESETS[0];
+  let bestPreset = allTemplates[0] ?? CUT_TEMPLATE_PRESETS[0];
   let bestScore = -1;
 
-  for (const preset of CUT_TEMPLATE_PRESETS) {
+  for (const preset of allTemplates) {
     let score = 0;
     for (const kw of preset.keywords) {
       if (lower.includes(kw)) score += 2;
@@ -158,7 +163,8 @@ function pickDefaultAudio(
 
 export function generateOfflineCutProject(
   request: AutoEditRequest,
-  assetsById: Map<string, MediaAsset>
+  assetsById: Map<string, MediaAsset>,
+  allTemplates: CutTemplatePreset[] = CUT_TEMPLATE_PRESETS
 ): { project: CutProject; warnings: string[] } {
   const visualAssets = request.assetIds
     .map((id) => assetsById.get(id))
@@ -180,7 +186,8 @@ export function generateOfflineCutProject(
 
   const preset = pickTemplateFromPrompt(
     request.prompt,
-    request.templateId ?? (isRefinement ? prev?.templateId : undefined)
+    request.templateId ?? (isRefinement ? prev?.templateId : undefined),
+    allTemplates
   );
   const aspectRatio = inferAspectRatio(
     request.prompt,
@@ -198,6 +205,20 @@ export function generateOfflineCutProject(
     request.audioAssetId ?? prev?.audioTrack?.assetId,
     assetsById
   );
+
+  if (preset.isCustom && preset.slots.length > 0 && request.templateId === preset.id) {
+    const built = buildProjectFromTemplate({
+      template: { ...preset, defaultAspectRatio: aspectRatio },
+      slotAssetIds: visualAssets.map((a) => a.id),
+      assetsById,
+      audioAsset,
+      projectId: prev?.id ?? crypto.randomUUID(),
+    });
+    return sanitizeCutProject(
+      { ...built, promptUsed: request.prompt, modeUsed: "offline" },
+      assetsById
+    );
+  }
 
   const beatStepSec = 60 / preset.bpm;
   const beatsPerCut =

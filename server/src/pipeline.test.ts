@@ -423,6 +423,16 @@ describe("Offline AI Director & FFmpeg Render Pipeline", () => {
           scale: 1.1,
           rotationDeg: 10,
         },
+        {
+          id: "stk-out-of-range",
+          stickerId: "sparkles",
+          startSec: 12.0,
+          endSec: 18.0,
+          xNorm: 0.2,
+          yNorm: 0.2,
+          scale: 1.0,
+          rotationDeg: 0,
+        },
       ],
       audioTracks: [
         {

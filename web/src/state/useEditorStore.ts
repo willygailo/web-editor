@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   computeTimelineLayout,
   getProjectAudioTracks,
@@ -20,27 +20,77 @@ export interface EditorSelection {
   stickerId: string | null;
 }
 
-function finalizeProject(project: CutProject): CutProject {
+interface HistoryState {
+  past: CutProject[];
+  present: CutProject | null;
+  future: CutProject[];
+}
+
+function finalizeProject(project: CutProject, prevTotalSec?: number): CutProject {
   const normalizedClips = project.clips.map((c, idx) =>
-    idx === 0
-      ? { ...c, transitionIn: "cut" as const, transitionDurationSec: 0 }
-      : c
+    idx === 0 ? { ...c, transitionIn: "cut" as const, transitionDurationSec: 0 } : c
   );
   const layout = computeTimelineLayout({ clips: normalizedClips });
-  const tracks = getProjectAudioTracks(project);
+  const totalSec = Math.max(0.5, layout.totalDurationSec);
+
+  const rawTracks = getProjectAudioTracks(project).map((tr) => {
+    const startSec = Number(
+      Math.max(0, Math.min(Math.max(0, totalSec - 0.25), tr.timelineStartSec ?? 0)).toFixed(2)
+    );
+    const maxRem = Math.max(0.25, totalSec - startSec);
+    if (tr.kind === "bgm" && startSec === 0) {
+      const matchedPrev =
+        tr.durationSec === undefined ||
+        (prevTotalSec !== undefined && Math.abs(tr.durationSec - prevTotalSec) < 0.3) ||
+        tr.durationSec > totalSec;
+      return {
+        ...tr,
+        timelineStartSec: 0,
+        durationSec: matchedPrev
+          ? totalSec
+          : Number(Math.max(0.4, Math.min(totalSec, tr.durationSec ?? totalSec)).toFixed(2)),
+      };
+    }
+    const nextDur =
+      tr.durationSec !== undefined
+        ? Number(Math.max(0.2, Math.min(maxRem, tr.durationSec)).toFixed(2))
+        : undefined;
+    return {
+      ...tr,
+      timelineStartSec: startSec,
+      durationSec: nextDur,
+    };
+  });
+
+  const overlays = project.overlays.map((o) => {
+    const startSec = Number(Math.max(0, Math.min(Math.max(0, totalSec - 0.35), o.startSec)).toFixed(2));
+    const endSec = Number(Math.min(totalSec, Math.max(startSec + 0.35, o.endSec)).toFixed(2));
+    return { ...o, startSec, endSec };
+  });
+
+  const stickers = (project.stickers || []).map((st) => {
+    const startSec = Number(Math.max(0, Math.min(Math.max(0, totalSec - 0.35), st.startSec)).toFixed(2));
+    const endSec = Number(Math.min(totalSec, Math.max(startSec + 0.35, st.endSec)).toFixed(2));
+    return { ...st, startSec, endSec };
+  });
+
   return {
     ...project,
     clips: normalizedClips,
-    targetDurationSec: layout.totalDurationSec,
-    audioTracks: tracks,
-    audioTrack: tracks[0],
+    overlays,
+    stickers,
+    targetDurationSec: totalSec,
+    audioTracks: rawTracks,
+    audioTrack: rawTracks[0],
   };
 }
 
 export function useEditorStore() {
-  const [past, setPast] = useState<CutProject[]>([]);
-  const [project, setProjectState] = useState<CutProject | null>(null);
-  const [future, setFuture] = useState<CutProject[]>([]);
+  const [history, setHistory] = useState<HistoryState>({
+    past: [],
+    present: null,
+    future: [],
+  });
 
   const [selection, setSelection] = useState<EditorSelection>({
     slotId: null,
@@ -49,29 +99,67 @@ export function useEditorStore() {
     stickerId: null,
   });
 
+  const presentRef = useRef<CutProject | null>(null);
+  presentRef.current = history.present;
+  const selectionRef = useRef<EditorSelection>(selection);
+  selectionRef.current = selection;
+
+  const gestureBaseRef = useRef<CutProject | null>(null);
+
   const commit = useCallback(
     (updater: (prev: CutProject) => CutProject, recordHistory = true) => {
-      setProjectState((prev) => {
-        if (!prev) return prev;
-        const next = finalizeProject(updater(prev));
-        if (recordHistory) {
-          setPast((p) => [...p.slice(-(MAX_HISTORY - 1)), prev]);
-          setFuture([]);
+      setHistory((h) => {
+        if (!h.present) return h;
+        const next = finalizeProject(updater(h.present), h.present.targetDurationSec);
+        if (!recordHistory) {
+          return { ...h, present: next };
         }
-        return next;
+        return {
+          past: [...h.past.slice(-(MAX_HISTORY - 1)), h.present],
+          present: next,
+          future: [],
+        };
       });
     },
     []
   );
 
+  const beginGesture = useCallback(() => {
+    if (!gestureBaseRef.current && presentRef.current) {
+      gestureBaseRef.current = presentRef.current;
+    }
+  }, []);
+
+  const endGesture = useCallback(() => {
+    const base = gestureBaseRef.current;
+    gestureBaseRef.current = null;
+    if (!base) return;
+    setHistory((h) => {
+      if (!h.present || h.present === base) return h;
+      return {
+        past: [...h.past.slice(-(MAX_HISTORY - 1)), base],
+        present: h.present,
+        future: [],
+      };
+    });
+  }, []);
+
   const loadProject = useCallback((nextProject: CutProject, recordHistory = true) => {
+    gestureBaseRef.current = null;
     const finalized = finalizeProject(nextProject);
-    setProjectState((prev) => {
-      if (prev && recordHistory) {
-        setPast((p) => [...p.slice(-(MAX_HISTORY - 1)), prev]);
-        setFuture([]);
+    setHistory((h) => {
+      if (h.present && recordHistory) {
+        return {
+          past: [...h.past.slice(-(MAX_HISTORY - 1)), h.present],
+          present: finalized,
+          future: [],
+        };
       }
-      return finalized;
+      return {
+        past: h.past,
+        present: finalized,
+        future: [],
+      };
     });
     setSelection({
       slotId: finalized.clips[0]?.id ?? null,
@@ -82,26 +170,28 @@ export function useEditorStore() {
   }, []);
 
   const undo = useCallback(() => {
-    setPast((p) => {
-      if (p.length === 0) return p;
-      const previous = p[p.length - 1];
-      setProjectState((curr) => {
-        if (curr) setFuture((f) => [curr, ...f.slice(0, MAX_HISTORY - 1)]);
-        return previous;
-      });
-      return p.slice(0, -1);
+    gestureBaseRef.current = null;
+    setHistory((h) => {
+      if (h.past.length === 0 || !h.present) return h;
+      const previous = h.past[h.past.length - 1];
+      return {
+        past: h.past.slice(0, -1),
+        present: previous,
+        future: [h.present, ...h.future.slice(0, MAX_HISTORY - 1)],
+      };
     });
   }, []);
 
   const redo = useCallback(() => {
-    setFuture((f) => {
-      if (f.length === 0) return f;
-      const next = f[0];
-      setProjectState((curr) => {
-        if (curr) setPast((p) => [...p.slice(-(MAX_HISTORY - 1)), curr]);
-        return next;
-      });
-      return f.slice(1);
+    gestureBaseRef.current = null;
+    setHistory((h) => {
+      if (h.future.length === 0) return h;
+      const next = h.future[0];
+      return {
+        past: h.present ? [...h.past.slice(-(MAX_HISTORY - 1)), h.present] : h.past,
+        present: next,
+        future: h.future.slice(1),
+      };
     });
   }, []);
 
@@ -136,12 +226,12 @@ export function useEditorStore() {
 
   const splitAtPlayhead = useCallback(
     (timelineSec: number) => {
-      if (!project) return;
-      const layout = computeTimelineLayout(project);
+      const proj = presentRef.current;
+      if (!proj) return;
+      const layout = computeTimelineLayout(proj);
+      const selectedId = selectionRef.current.slotId;
       const target =
-        (selection.slotId
-          ? layout.slots.find((s) => s.slot.id === selection.slotId)
-          : undefined) ??
+        (selectedId ? layout.slots.find((s) => s.slot.id === selectedId) : undefined) ??
         layout.slots.find(
           (s) => timelineSec >= s.timelineStartSec && timelineSec <= s.timelineEndSec
         );
@@ -149,7 +239,7 @@ export function useEditorStore() {
       if (!target) return;
       const offsetInSlot = timelineSec - target.timelineStartSec;
       if (offsetInSlot < 0.25 || target.rawDurationSec - offsetInSlot < 0.25) {
-        return; // too close to edge to split cleanly
+        return;
       }
 
       const speed = target.slot.speed || 1;
@@ -168,17 +258,18 @@ export function useEditorStore() {
         ? { ...target.slot, sourceStartSec: splitSourceTime }
         : { ...target.slot, sourceEndSec: splitSourceTime };
 
+      const newId = `slot-${Date.now().toString(36)}`;
       const secondHalf: ClipSlot = target.slot.reversed
         ? {
             ...target.slot,
-            id: `slot-${Date.now().toString(36)}`,
+            id: newId,
             sourceEndSec: splitSourceTime,
             transitionIn: "cut",
             transitionDurationSec: 0,
           }
         : {
             ...target.slot,
-            id: `slot-${Date.now().toString(36)}`,
+            id: newId,
             sourceStartSec: splitSourceTime,
             transitionIn: "cut",
             transitionDurationSec: 0,
@@ -189,9 +280,9 @@ export function useEditorStore() {
         nextClips.splice(target.index, 1, firstHalf, secondHalf);
         return { ...prev, clips: nextClips };
       });
-      selectSlot(secondHalf.id);
+      selectSlot(newId);
     },
-    [project, selection.slotId, commit, selectSlot]
+    [commit, selectSlot]
   );
 
   const duplicateSlot = useCallback(
@@ -217,15 +308,16 @@ export function useEditorStore() {
 
   const deleteSlot = useCallback(
     (slotId: string) => {
-      if (!project || project.clips.length <= 1) return;
+      const proj = presentRef.current;
+      if (!proj || proj.clips.length <= 1) return;
       commit((prev) => ({
         ...prev,
         clips: prev.clips.filter((c) => c.id !== slotId),
       }));
-      const remaining = project.clips.find((c) => c.id !== slotId);
+      const remaining = proj.clips.find((c) => c.id !== slotId);
       selectSlot(remaining?.id ?? null);
     },
-    [project, commit, selectSlot]
+    [commit, selectSlot]
   );
 
   const moveSlot = useCallback(
@@ -283,7 +375,7 @@ export function useEditorStore() {
         reversed: false,
         label: asset.originalName,
       };
-      if (!project) {
+      if (!presentRef.current) {
         loadProject({
           id: crypto.randomUUID(),
           title: asset.originalName,
@@ -307,7 +399,7 @@ export function useEditorStore() {
         selectSlot(newId);
       }
     },
-    [project, loadProject, commit, selectSlot]
+    [loadProject, commit, selectSlot]
   );
 
   const addAudioTrack = useCallback(
@@ -336,7 +428,6 @@ export function useEditorStore() {
           beatMarkersSec: asset.beatMarkersSec,
         };
 
-        // Replace main BGM if adding a new BGM; stack SFX & voiceovers!
         const nextTracks =
           kind === "bgm"
             ? [nextTrack, ...existing.filter((t) => t.kind !== "bgm")]
@@ -354,13 +445,13 @@ export function useEditorStore() {
   );
 
   const updateAudioTrack = useCallback(
-    (trackId: string, patch: Partial<AudioTrack>) => {
+    (trackId: string, patch: Partial<AudioTrack>, recordHistory = true) => {
       commit((prev) => {
         const nextTracks = getProjectAudioTracks(prev).map((t) =>
           t.id === trackId ? { ...t, ...patch } : t
         );
         return { ...prev, audioTracks: nextTracks, audioTrack: nextTracks[0] };
-      });
+      }, recordHistory);
     },
     [commit]
   );
@@ -378,8 +469,9 @@ export function useEditorStore() {
 
   const snapCutsToBeats = useCallback(
     (assetsById: Map<string, MediaAsset>) => {
-      if (!project) return;
-      const tracks = getProjectAudioTracks(project);
+      const proj = presentRef.current;
+      if (!proj) return;
+      const tracks = getProjectAudioTracks(proj);
       const beats = tracks[0]?.beatMarkersSec ?? [];
       if (beats.length < 2) return;
 
@@ -388,19 +480,19 @@ export function useEditorStore() {
         const nextClips = prev.clips.map((slot, idx) => {
           const asset = assetsById.get(slot.assetId);
           const maxAssetDur = asset?.durationSec ?? slot.sourceEndSec;
-          const rawDur = Math.max(0.4, (slot.sourceEndSec - slot.sourceStartSec) / (slot.speed || 1));
+          const speed = slot.speed || 1;
+          const rawDur = Math.max(0.4, (slot.sourceEndSec - slot.sourceStartSec) / speed);
 
           const targetEnd = cursor + rawDur;
-          const nearestBeat = beats.reduce((best, b) =>
+          const forwardBeats = beats.filter((b) => b >= cursor + 0.45);
+          const pool = forwardBeats.length > 0 ? forwardBeats : beats;
+          const nearestBeat = pool.reduce((best, b) =>
             Math.abs(b - targetEnd) < Math.abs(best - targetEnd) ? b : best
           );
-          const snappedDur = Math.max(0.5, nearestBeat - cursor);
+          const snappedDur = Math.max(0.45, nearestBeat - cursor);
           const finalDur = idx === prev.clips.length - 1 ? rawDur : snappedDur;
-          const nextEnd = Math.min(
-            maxAssetDur,
-            slot.sourceStartSec + finalDur * (slot.speed || 1)
-          );
-          cursor += (nextEnd - slot.sourceStartSec) / (slot.speed || 1);
+          const nextEnd = Math.min(maxAssetDur, slot.sourceStartSec + finalDur * speed);
+          cursor += (nextEnd - slot.sourceStartSec) / speed;
           return {
             ...slot,
             sourceEndSec: Number(Math.max(slot.sourceStartSec + 0.35, nextEnd).toFixed(2)),
@@ -409,29 +501,70 @@ export function useEditorStore() {
         return { ...prev, clips: nextClips };
       });
     },
-    [project, commit]
+    [commit]
   );
 
   const updateOverlays = useCallback(
-    (overlays: TextOverlay[], recordHistory = true) => {
-      commit((prev) => ({ ...prev, overlays }), recordHistory);
+    (
+      updater: TextOverlay[] | ((prev: TextOverlay[]) => TextOverlay[]),
+      recordHistory = true
+    ) => {
+      commit(
+        (prev) => ({
+          ...prev,
+          overlays: typeof updater === "function" ? updater(prev.overlays) : updater,
+        }),
+        recordHistory
+      );
     },
     [commit]
   );
 
   const updateStickers = useCallback(
-    (stickers: StickerOverlay[], recordHistory = true) => {
-      commit((prev) => ({ ...prev, stickers }), recordHistory);
+    (
+      updater: StickerOverlay[] | ((prev: StickerOverlay[]) => StickerOverlay[]),
+      recordHistory = true
+    ) => {
+      commit(
+        (prev) => ({
+          ...prev,
+          stickers: typeof updater === "function" ? updater(prev.stickers || []) : updater,
+        }),
+        recordHistory
+      );
     },
     [commit]
   );
 
+  const deleteSelection = useCallback(() => {
+    const sel = selectionRef.current;
+    if (sel.overlayId) {
+      updateOverlays((prev) => prev.filter((o) => o.id !== sel.overlayId));
+      selectOverlay(null);
+      return;
+    }
+    if (sel.stickerId) {
+      updateStickers((prev) => prev.filter((s) => s.id !== sel.stickerId));
+      selectSticker(null);
+      return;
+    }
+    if (sel.audioTrackId) {
+      deleteAudioTrack(sel.audioTrackId);
+      return;
+    }
+    if (sel.slotId) {
+      deleteSlot(sel.slotId);
+    }
+  }, [updateOverlays, selectOverlay, updateStickers, selectSticker, deleteAudioTrack, deleteSlot]);
+
   return {
-    project,
-    canUndo: past.length > 0,
-    canRedo: future.length > 0,
+    project: history.present,
+    canUndo: history.past.length > 0,
+    canRedo: history.future.length > 0,
     selection,
     commit,
+    beginGesture,
+    endGesture,
     loadProject,
     undo,
     redo,
@@ -452,5 +585,6 @@ export function useEditorStore() {
     snapCutsToBeats,
     updateOverlays,
     updateStickers,
+    deleteSelection,
   };
 }

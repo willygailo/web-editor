@@ -65,6 +65,7 @@ export function registerAiRoutes(
         config,
         assetsById,
         filePathsById,
+        templates: templatesStore.listAll(),
       });
       return result;
     } catch (err) {

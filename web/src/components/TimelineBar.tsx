@@ -38,6 +38,8 @@ interface TimelineBarProps {
   onDuplicateSlot: (slotId: string) => void;
   onMoveSlot: (slotId: string, dir: -1 | 1) => void;
   onUpdateSlot: (slotId: string, patch: Partial<ClipSlot>, recordHistory?: boolean) => void;
+  onBeginDrag?: () => void;
+  onEndDrag?: () => void;
   onSelectSlot: (slotId: string) => void;
   onSelectAudioTrack: (id: string) => void;
   onSelectOverlay: (id: string) => void;
@@ -70,6 +72,8 @@ export function TimelineBar({
   onDuplicateSlot,
   onMoveSlot,
   onUpdateSlot,
+  onBeginDrag,
+  onEndDrag,
   onSelectSlot,
   onSelectAudioTrack,
   onSelectOverlay,
@@ -125,6 +129,7 @@ export function TimelineBar({
     e.stopPropagation();
     const handle = e.currentTarget;
     handle.setPointerCapture(e.pointerId);
+    onBeginDrag?.();
     const startX = e.clientX;
     const origStart = slot.sourceStartSec;
     const origEnd = slot.sourceEndSec;
@@ -143,6 +148,7 @@ export function TimelineBar({
     };
 
     const onEnd = () => {
+      onEndDrag?.();
       handle.removeEventListener("pointermove", onMove);
       handle.removeEventListener("lostpointercapture", onEnd);
     };
@@ -528,6 +534,16 @@ export function TimelineBar({
                   </div>
                 );
               })
+            )}
+            {tracks.length > 0 && (
+              <button
+                type="button"
+                onClick={onOpenAddMusic}
+                className="inline-flex h-6 w-fit items-center gap-1 rounded-md border border-dashed border-rose-400/45 bg-rose-500/10 px-2.5 text-[10px] font-semibold text-rose-200 hover:bg-rose-500/20"
+              >
+                <Plus className="size-3" aria-hidden="true" />
+                <span>Add Music / SFX</span>
+              </button>
             )}
           </div>
 

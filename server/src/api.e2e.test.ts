@@ -144,6 +144,23 @@ describe("End-to-End Fastify API (Sample Pack -> Auto-Edit -> FFmpeg MP4 Render)
     const tplList = listTplRes.json() as { templates: Array<{ id: string }> };
     expect(tplList.templates.some((t) => t.id === savedTpl.template.id)).toBe(true);
 
+    const customFillRes = await app.inject({
+      method: "POST",
+      url: "/api/projects/auto-edit",
+      payload: {
+        prompt: "Apply custom template",
+        assetIds: [sampleData.assets[0].id],
+        templateId: savedTpl.template.id,
+        mode: "offline",
+      },
+    });
+    expect(customFillRes.statusCode).toBe(200);
+    const customFillData = customFillRes.json() as {
+      project: { templateId: string; clips: Array<{ label?: string }> };
+    };
+    expect(customFillData.project.templateId).toBe(savedTpl.template.id);
+    expect(customFillData.project.clips[0]?.label).toBe("Intro");
+
     const delTplRes = await app.inject({
       method: "DELETE",
       url: `/api/templates/${savedTpl.template.id}`,

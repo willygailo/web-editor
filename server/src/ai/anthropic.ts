@@ -6,6 +6,7 @@ import {
   type AutoEditRequest,
   type CutProject,
   type CutProjectInput,
+  type CutTemplatePreset,
   type MediaAsset,
 } from "@cutflow/shared";
 import { runProcess } from "../media/exec.js";
@@ -17,10 +18,7 @@ const EDL_TOOL_SCHEMA = {
   type: "object",
   properties: {
     title: { type: "string" },
-    templateId: {
-      type: "string",
-      enum: CUT_TEMPLATE_PRESETS.map((p) => p.id),
-    },
+    templateId: { type: "string" },
     aiSummary: { type: "string" },
     aspectRatio: { type: "string", enum: ["9:16", "16:9", "1:1"] },
     clips: {
@@ -176,6 +174,7 @@ export async function generateAnthropicCutProject(params: {
   assetsById: Map<string, MediaAsset>;
   filePathsById: Map<string, string>;
   fetchFn?: typeof fetch;
+  templates?: CutTemplatePreset[];
 }): Promise<{ project: CutProject; warnings: string[] }> {
   const {
     apiKey,
@@ -185,6 +184,7 @@ export async function generateAnthropicCutProject(params: {
     assetsById,
     filePathsById,
     fetchFn = fetch,
+    templates = CUT_TEMPLATE_PRESETS,
   } = params;
 
   const resolvedWorkspaceId = await resolveAnthropicWorkspaceId(
@@ -271,12 +271,13 @@ export async function generateAnthropicCutProject(params: {
     beatMarkersSec: a.beatMarkersSec.slice(0, 32),
   }));
 
-  const templateSummary = CUT_TEMPLATE_PRESETS.map((t) => ({
+  const templateSummary = templates.map((t) => ({
     id: t.id,
     name: t.name,
     tagline: t.tagline,
     defaultAspectRatio: t.defaultAspectRatio,
     bpm: t.bpm,
+    isCustom: Boolean(t.isCustom),
   }));
 
   const promptText = [

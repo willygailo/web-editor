@@ -39,6 +39,8 @@ interface SlotInspectorProps {
   assets: MediaAsset[];
   assetsById: Map<string, MediaAsset>;
   currentTime: number;
+  onBeginSlider?: () => void;
+  onEndSlider?: () => void;
   onUpdateSlot: (slotId: string, patch: Partial<ClipSlot>, recordHistory?: boolean) => void;
   onReplaceSlotAsset: (slotId: string, asset: MediaAsset) => void;
   onDuplicateSlot: (slotId: string) => void;
@@ -78,6 +80,8 @@ export function SlotInspector({
   assets,
   assetsById,
   currentTime,
+  onBeginSlider,
+  onEndSlider,
   onUpdateSlot,
   onReplaceSlotAsset,
   onDuplicateSlot,
@@ -187,34 +191,63 @@ export function SlotInspector({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          {asset?.kind === "image" ? (
             <label className="flex flex-col gap-0.5 text-[11px] text-slate-400">
-              <span>In ({slot.sourceStartSec.toFixed(1)}s)</span>
+              <span>Photo Duration ({(slot.sourceEndSec - slot.sourceStartSec).toFixed(1)}s)</span>
               <input
                 type="range"
-                min={0}
-                max={Math.max(0.2, slot.sourceEndSec - 0.35)}
+                min={0.6}
+                max={10}
                 step={0.1}
-                value={slot.sourceStartSec}
+                value={Math.max(0.6, slot.sourceEndSec - slot.sourceStartSec)}
+                onPointerDown={onBeginSlider}
+                onPointerUp={onEndSlider}
+                onBlur={onEndSlider}
                 onChange={(e) =>
-                  onUpdateSlot(slot.id, { sourceStartSec: Number(e.target.value) })
+                  onUpdateSlot(
+                    slot.id,
+                    { sourceStartSec: 0, sourceEndSec: Number(e.target.value) },
+                    false
+                  )
                 }
               />
             </label>
-            <label className="flex flex-col gap-0.5 text-[11px] text-slate-400">
-              <span>Out ({slot.sourceEndSec.toFixed(1)}s)</span>
-              <input
-                type="range"
-                min={Math.min(maxDur, slot.sourceStartSec + 0.35)}
-                max={maxDur}
-                step={0.1}
-                value={slot.sourceEndSec}
-                onChange={(e) =>
-                  onUpdateSlot(slot.id, { sourceEndSec: Number(e.target.value) })
-                }
-              />
-            </label>
-          </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <label className="flex flex-col gap-0.5 text-[11px] text-slate-400">
+                <span>In ({slot.sourceStartSec.toFixed(1)}s)</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(0.2, slot.sourceEndSec - 0.35)}
+                  step={0.1}
+                  value={slot.sourceStartSec}
+                  onPointerDown={onBeginSlider}
+                  onPointerUp={onEndSlider}
+                  onBlur={onEndSlider}
+                  onChange={(e) =>
+                    onUpdateSlot(slot.id, { sourceStartSec: Number(e.target.value) }, false)
+                  }
+                />
+              </label>
+              <label className="flex flex-col gap-0.5 text-[11px] text-slate-400">
+                <span>Out ({slot.sourceEndSec.toFixed(1)}s)</span>
+                <input
+                  type="range"
+                  min={Math.min(maxDur, slot.sourceStartSec + 0.35)}
+                  max={maxDur}
+                  step={0.1}
+                  value={slot.sourceEndSec}
+                  onPointerDown={onBeginSlider}
+                  onPointerUp={onEndSlider}
+                  onBlur={onEndSlider}
+                  onChange={(e) =>
+                    onUpdateSlot(slot.id, { sourceEndSec: Number(e.target.value) }, false)
+                  }
+                />
+              </label>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-2">
             <label className="flex flex-col gap-1 text-[11px] text-slate-400">
@@ -277,11 +310,14 @@ export function SlotInspector({
               <input
                 type="range"
                 min={0.5}
-                max={2.0}
+                max={2.5}
                 step={0.05}
                 value={slot.speed}
+                onPointerDown={onBeginSlider}
+                onPointerUp={onEndSlider}
+                onBlur={onEndSlider}
                 onChange={(e) =>
-                  onUpdateSlot(slot.id, { speed: Number(e.target.value) })
+                  onUpdateSlot(slot.id, { speed: Number(e.target.value) }, false)
                 }
               />
             </label>
@@ -340,8 +376,15 @@ export function SlotInspector({
                 max={0.35}
                 step={0.02}
                 value={adjust.brightness}
+                onPointerDown={onBeginSlider}
+                onPointerUp={onEndSlider}
+                onBlur={onEndSlider}
                 onChange={(e) =>
-                  onUpdateSlot(slot.id, { adjust: { ...adjust, brightness: Number(e.target.value) } })
+                  onUpdateSlot(
+                    slot.id,
+                    { adjust: { ...adjust, brightness: Number(e.target.value) } },
+                    false
+                  )
                 }
               />
             </label>
@@ -353,8 +396,15 @@ export function SlotInspector({
                 max={0.45}
                 step={0.02}
                 value={adjust.contrast}
+                onPointerDown={onBeginSlider}
+                onPointerUp={onEndSlider}
+                onBlur={onEndSlider}
                 onChange={(e) =>
-                  onUpdateSlot(slot.id, { adjust: { ...adjust, contrast: Number(e.target.value) } })
+                  onUpdateSlot(
+                    slot.id,
+                    { adjust: { ...adjust, contrast: Number(e.target.value) } },
+                    false
+                  )
                 }
               />
             </label>
@@ -366,8 +416,15 @@ export function SlotInspector({
                 max={1}
                 step={0.05}
                 value={adjust.saturation}
+                onPointerDown={onBeginSlider}
+                onPointerUp={onEndSlider}
+                onBlur={onEndSlider}
                 onChange={(e) =>
-                  onUpdateSlot(slot.id, { adjust: { ...adjust, saturation: Number(e.target.value) } })
+                  onUpdateSlot(
+                    slot.id,
+                    { adjust: { ...adjust, saturation: Number(e.target.value) } },
+                    false
+                  )
                 }
               />
             </label>
@@ -379,8 +436,15 @@ export function SlotInspector({
                 max={0.4}
                 step={0.02}
                 value={adjust.warmth}
+                onPointerDown={onBeginSlider}
+                onPointerUp={onEndSlider}
+                onBlur={onEndSlider}
                 onChange={(e) =>
-                  onUpdateSlot(slot.id, { adjust: { ...adjust, warmth: Number(e.target.value) } })
+                  onUpdateSlot(
+                    slot.id,
+                    { adjust: { ...adjust, warmth: Number(e.target.value) } },
+                    false
+                  )
                 }
               />
             </label>
@@ -392,8 +456,15 @@ export function SlotInspector({
                 max={1}
                 step={0.05}
                 value={adjust.vignette}
+                onPointerDown={onBeginSlider}
+                onPointerUp={onEndSlider}
+                onBlur={onEndSlider}
                 onChange={(e) =>
-                  onUpdateSlot(slot.id, { adjust: { ...adjust, vignette: Number(e.target.value) } })
+                  onUpdateSlot(
+                    slot.id,
+                    { adjust: { ...adjust, vignette: Number(e.target.value) } },
+                    false
+                  )
                 }
               />
             </label>
@@ -405,8 +476,15 @@ export function SlotInspector({
                 max={2.2}
                 step={0.05}
                 value={transform.scale}
+                onPointerDown={onBeginSlider}
+                onPointerUp={onEndSlider}
+                onBlur={onEndSlider}
                 onChange={(e) =>
-                  onUpdateSlot(slot.id, { transform: { ...transform, scale: Number(e.target.value) } })
+                  onUpdateSlot(
+                    slot.id,
+                    { transform: { ...transform, scale: Number(e.target.value) } },
+                    false
+                  )
                 }
               />
             </label>
@@ -442,13 +520,21 @@ export function SlotInspector({
                 type="button"
                 onClick={() => {
                   const id = `txt-${Date.now().toString(36)}`;
+                  const safeStart = Math.max(
+                    0,
+                    Math.min(Math.max(0, project.targetDurationSec - 1), currentTime)
+                  );
+                  const safeEnd = Math.min(
+                    project.targetDurationSec,
+                    Math.max(safeStart + 0.6, safeStart + 2.5)
+                  );
                   onUpdateOverlays([
                     ...project.overlays,
                     {
                       id,
                       text: "NEW TEXT",
-                      startSec: Number(Math.max(0, currentTime).toFixed(2)),
-                      endSec: Number(Math.min(project.targetDurationSec, currentTime + 2.5).toFixed(2)),
+                      startSec: Number(safeStart.toFixed(2)),
+                      endSec: Number(safeEnd.toFixed(2)),
                       position: "center",
                       style: "capcut-pop",
                       xNorm: 0.5,
@@ -481,6 +567,15 @@ export function SlotInspector({
                       )
                     )
                   }
+                  onBlur={() => {
+                    if (!selectedOverlay.text.trim()) {
+                      onUpdateOverlays(
+                        project.overlays.map((o) =>
+                          o.id === selectedOverlay.id ? { ...o, text: "TEXT" } : o
+                        )
+                      );
+                    }
+                  }}
                   aria-label="Overlay text"
                   className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-[#090b10] px-2.5 py-1 text-xs text-slate-100"
                 />
@@ -581,13 +676,17 @@ export function SlotInspector({
                     max={2.2}
                     step={0.05}
                     value={selectedOverlay.scale ?? 1}
+                    onPointerDown={onBeginSlider}
+                    onPointerUp={onEndSlider}
+                    onBlur={onEndSlider}
                     onChange={(e) =>
                       onUpdateOverlays(
                         project.overlays.map((o) =>
                           o.id === selectedOverlay.id
                             ? { ...o, scale: Number(e.target.value) }
                             : o
-                        )
+                        ),
+                        false
                       )
                     }
                   />
@@ -600,13 +699,17 @@ export function SlotInspector({
                     max={45}
                     step={1}
                     value={selectedOverlay.rotationDeg ?? 0}
+                    onPointerDown={onBeginSlider}
+                    onPointerUp={onEndSlider}
+                    onBlur={onEndSlider}
                     onChange={(e) =>
                       onUpdateOverlays(
                         project.overlays.map((o) =>
                           o.id === selectedOverlay.id
                             ? { ...o, rotationDeg: Number(e.target.value) }
                             : o
-                        )
+                        ),
+                        false
                       )
                     }
                   />
@@ -636,13 +739,21 @@ export function SlotInspector({
                 type="button"
                 onClick={() => {
                   const id = `stk-${Date.now().toString(36)}`;
+                  const safeStart = Math.max(
+                    0,
+                    Math.min(Math.max(0, project.targetDurationSec - 1), currentTime)
+                  );
+                  const safeEnd = Math.min(
+                    project.targetDurationSec,
+                    Math.max(safeStart + 0.6, safeStart + 2.5)
+                  );
                   onUpdateStickers([
                     ...(project.stickers || []),
                     {
                       id,
                       stickerId: item.id,
-                      startSec: Number(Math.max(0, currentTime).toFixed(2)),
-                      endSec: Number(Math.min(project.targetDurationSec, currentTime + 2.5).toFixed(2)),
+                      startSec: Number(safeStart.toFixed(2)),
+                      endSec: Number(safeEnd.toFixed(2)),
                       xNorm: 0.5,
                       yNorm: 0.28,
                       scale: 1,
@@ -691,11 +802,15 @@ export function SlotInspector({
                   max={2.2}
                   step={0.05}
                   value={selectedSticker.scale}
+                  onPointerDown={onBeginSlider}
+                  onPointerUp={onEndSlider}
+                  onBlur={onEndSlider}
                   onChange={(e) =>
                     onUpdateStickers(
                       (project.stickers || []).map((s) =>
                         s.id === selectedSticker.id ? { ...s, scale: Number(e.target.value) } : s
-                      )
+                      ),
+                      false
                     )
                   }
                 />

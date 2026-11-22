@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AudioLines,
   Film,
@@ -26,11 +26,13 @@ interface AudioDrawerProps {
   currentTime: number;
   onSelectAudioTrack: (id: string | null) => void;
   onAddAudioTrack: (asset: MediaAsset, kind: AudioCategory, startSec: number) => void;
-  onUpdateAudioTrack: (id: string, patch: Partial<AudioTrack>) => void;
+  onUpdateAudioTrack: (id: string, patch: Partial<AudioTrack>, recordHistory?: boolean) => void;
   onDeleteAudioTrack: (id: string) => void;
   onUploadAudio: (files: File[], autoAddKind?: AudioCategory) => Promise<void>;
   onExtractAudio: (videoAssetId: string) => Promise<void>;
   onSnapCutsToBeats: () => void;
+  onBeginSlider?: () => void;
+  onEndSlider?: () => void;
 }
 
 export function AudioDrawer({
@@ -45,9 +47,12 @@ export function AudioDrawer({
   onUploadAudio,
   onExtractAudio,
   onSnapCutsToBeats,
+  onBeginSlider,
+  onEndSlider,
 }: AudioDrawerProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const timerRef = useRef<number | null>(null);
 
@@ -55,6 +60,16 @@ export function AudioDrawer({
   const [recordSec, setRecordSec] = useState(0);
   const [extractingId, setExtractingId] = useState<string | null>(null);
   const [recError, setRecError] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) window.clearInterval(timerRef.current);
+      if (recorderRef.current && recorderRef.current.state !== "inactive") {
+        recorderRef.current.stop();
+      }
+      streamRef.current?.getTracks().forEach((tr) => tr.stop());
+    };
+  }, []);
 
   const audioAssets = assets.filter((a) => a.kind === "audio");
   const bgmAssets = audioAssets.filter((a) => a.audioCategory !== "sfx");
@@ -64,16 +79,37 @@ export function AudioDrawer({
   const activeTracks = project ? getProjectAudioTracks(project) : [];
   const selectedTrack =
     activeTracks.find((t) => t.id === selectedAudioTrackId) ?? activeTracks[0];
+  const selectedTrackAsset = selectedTrack
+    ? assets.find((a) => a.id === selectedTrack.assetId)
+    : undefined;
+  const maxStartOffset = Math.max(
+    0,
+    Number((((selectedTrackAsset?.durationSec ?? 20) - 0.3)).toFixed(1))
+  );
 
   const startVoiceover = async () => {
     setRecError(null);
-    if (!navigator.mediaDevices?.getUserMedia) {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       setRecError("Microphone recording is not supported in this browser.");
       return;
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      streamRef.current = stream;
+      const candidateTypes = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4",
+        "audio/ogg;codecs=opus",
+      ];
+      const chosenMime =
+        typeof MediaRecorder.isTypeSupported === "function"
+          ? candidateTypes.find((t) => MediaRecorder.isTypeSupported(t)) ?? ""
+          : "";
+
+      const recorder = chosenMime
+        ? new MediaRecorder(stream, { mimeType: chosenMime })
+        : new MediaRecorder(stream);
       chunksRef.current = [];
 
       recorder.ondataavailable = (ev) => {
@@ -82,14 +118,21 @@ export function AudioDrawer({
 
       recorder.onstop = async () => {
         stream.getTracks().forEach((tr) => tr.stop());
+        streamRef.current = null;
         if (timerRef.current) {
           window.clearInterval(timerRef.current);
           timerRef.current = null;
         }
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        const actualMime = recorder.mimeType || chosenMime || "audio/webm";
+        const ext = actualMime.includes("mp4")
+          ? "m4a"
+          : actualMime.includes("ogg")
+            ? "ogg"
+            : "webm";
+        const blob = new Blob(chunksRef.current, { type: actualMime });
         if (blob.size > 200) {
-          const file = new File([blob], `voiceover-${Date.now()}.webm`, {
-            type: "audio/webm",
+          const file = new File([blob], `voiceover-${Date.now()}.${ext}`, {
+            type: actualMime,
           });
           await onUploadAudio([file], "voiceover");
         }
@@ -192,11 +235,14 @@ export function AudioDrawer({
             <input
               type="range"
               min={0}
-              max={1.5}
+              max={2}
               step={0.05}
               value={selectedTrack.volume}
+              onPointerDown={onBeginSlider}
+              onPointerUp={onEndSlider}
+              onBlur={onEndSlider}
               onChange={(e) =>
-                onUpdateAudioTrack(selectedTrack.id, { volume: Number(e.target.value) })
+                onUpdateAudioTrack(selectedTrack.id, { volume: Number(e.target.value) }, false)
               }
             />
           </label>
@@ -207,13 +253,18 @@ export function AudioDrawer({
               <input
                 type="range"
                 min={0}
-                max={15}
-                step={0.2}
-                value={selectedTrack.startOffsetSec}
+                max={maxStartOffset}
+                step={0.1}
+                value={Math.min(maxStartOffset, selectedTrack.startOffsetSec)}
+                onPointerDown={onBeginSlider}
+                onPointerUp={onEndSlider}
+                onBlur={onEndSlider}
                 onChange={(e) =>
-                  onUpdateAudioTrack(selectedTrack.id, {
-                    startOffsetSec: Number(e.target.value),
-                  })
+                  onUpdateAudioTrack(
+                    selectedTrack.id,
+                    { startOffsetSec: Number(e.target.value) },
+                    false
+                  )
                 }
               />
             </label>
@@ -225,38 +276,84 @@ export function AudioDrawer({
                 max={Math.max(0, project.targetDurationSec - 0.3)}
                 step={0.1}
                 value={selectedTrack.timelineStartSec}
+                onPointerDown={onBeginSlider}
+                onPointerUp={onEndSlider}
+                onBlur={onEndSlider}
                 onChange={(e) =>
-                  onUpdateAudioTrack(selectedTrack.id, {
-                    timelineStartSec: Number(e.target.value),
-                  })
+                  onUpdateAudioTrack(
+                    selectedTrack.id,
+                    { timelineStartSec: Number(e.target.value) },
+                    false
+                  )
                 }
               />
             </label>
             <label className="flex flex-col gap-0.5 text-[11px] text-slate-300">
-              <span>Fade In ({selectedTrack.fadeInSec.toFixed(1)}s)</span>
+              <span>
+                Track Length (
+                {(selectedTrack.durationSec ?? project.targetDurationSec).toFixed(1)}s)
+              </span>
               <input
                 type="range"
-                min={0}
-                max={2}
+                min={0.3}
+                max={Math.max(0.4, project.targetDurationSec - selectedTrack.timelineStartSec)}
                 step={0.1}
-                value={selectedTrack.fadeInSec}
+                value={
+                  selectedTrack.durationSec ??
+                  Math.max(0.4, project.targetDurationSec - selectedTrack.timelineStartSec)
+                }
+                onPointerDown={onBeginSlider}
+                onPointerUp={onEndSlider}
+                onBlur={onEndSlider}
                 onChange={(e) =>
-                  onUpdateAudioTrack(selectedTrack.id, { fadeInSec: Number(e.target.value) })
+                  onUpdateAudioTrack(
+                    selectedTrack.id,
+                    { durationSec: Number(e.target.value) },
+                    false
+                  )
                 }
               />
             </label>
             <label className="flex flex-col gap-0.5 text-[11px] text-slate-300">
-              <span>Fade Out ({selectedTrack.fadeOutSec.toFixed(1)}s)</span>
-              <input
-                type="range"
-                min={0}
-                max={3}
-                step={0.1}
-                value={selectedTrack.fadeOutSec}
-                onChange={(e) =>
-                  onUpdateAudioTrack(selectedTrack.id, { fadeOutSec: Number(e.target.value) })
-                }
-              />
+              <span>Fade In / Out ({selectedTrack.fadeInSec.toFixed(1)}s / {selectedTrack.fadeOutSec.toFixed(1)}s)</span>
+              <div className="grid grid-cols-2 gap-1.5">
+                <input
+                  type="range"
+                  aria-label="Fade in seconds"
+                  min={0}
+                  max={2}
+                  step={0.1}
+                  value={selectedTrack.fadeInSec}
+                  onPointerDown={onBeginSlider}
+                  onPointerUp={onEndSlider}
+                  onBlur={onEndSlider}
+                  onChange={(e) =>
+                    onUpdateAudioTrack(
+                      selectedTrack.id,
+                      { fadeInSec: Number(e.target.value) },
+                      false
+                    )
+                  }
+                />
+                <input
+                  type="range"
+                  aria-label="Fade out seconds"
+                  min={0}
+                  max={3}
+                  step={0.1}
+                  value={selectedTrack.fadeOutSec}
+                  onPointerDown={onBeginSlider}
+                  onPointerUp={onEndSlider}
+                  onBlur={onEndSlider}
+                  onChange={(e) =>
+                    onUpdateAudioTrack(
+                      selectedTrack.id,
+                      { fadeOutSec: Number(e.target.value) },
+                      false
+                    )
+                  }
+                />
+              </div>
             </label>
           </div>
 

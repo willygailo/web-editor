@@ -43,8 +43,8 @@ export function TemplateStudioModal({
         ? template.overlays.map((o) => o.text)
         : [template.defaultHookText];
     setTextDrafts(initialTexts);
-    setAudioId(selectedAudioId || template.defaultAudioId);
-  }, [template, open, visuals.length, selectedAudioId]);
+    setAudioId(template.defaultAudioId || selectedAudioId);
+  }, [template, open]);
 
   if (!template) return null;
 
