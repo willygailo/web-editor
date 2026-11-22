@@ -25,3 +25,11 @@ pnpm dev
 - `pnpm build` — build `shared`, `server`, and `web`
 - `pnpm test` — run shared + server tests (includes real FFmpeg render verification)
 - `pnpm typecheck` — run strict TypeScript checks across all packages
+
+## Contributors
+
+See [CONTRIBUTORS.md](./CONTRIBUTORS.md) and the live [GitHub Contributors Graph](https://github.com/willygailo/web-editor/graphs/contributors?from=2026-08-21T16%3A00%3A00.000Z).
+
+<a href="https://github.com/willygailo/web-editor/graphs/contributors?from=2026-08-21T16%3A00%3A00.000Z">
+  <img src="https://contrib.rocks/image?repo=willygailo/web-editor" alt="Contributors" />
+</a>
