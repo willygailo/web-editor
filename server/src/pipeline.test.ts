@@ -1026,3 +1026,299 @@ describe("V3 Features (Audio Ducking, Custom Logo Sticker & Model Overrides)", (
     expect(sanitized.project.audioTracks[0]?.duckUnderVoice).toBe(true);
   }, 60_000);
 });
+
+describe("Challenge Audit Fixes (Audio Drift, Rotation, ASS Colors, Remix Stickers & Cache Hygiene)", () => {
+  it("prevents FFmpeg -stream_loop + -ss duration overshoot and tapers audio across transition overlaps", async () => {
+    const vidClip = path.join(tempRoot, "tr-vid.mp4");
+    const shortBgm = path.join(tempRoot, "short-bgm.m4a");
+    const outPath = path.join(tempRoot, "loop-accurate.mp4");
+
+    const vRes = await runProcess("ffmpeg", [
+      "-y", "-f", "lavfi", "-i", "color=c=purple:s=640x640:d=2.5:r=30",
+      "-f", "lavfi", "-i", "sine=frequency=330:duration=2.5",
+      "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", vidClip,
+    ]);
+    const aRes = await runProcess("ffmpeg", [
+      "-y", "-f", "lavfi", "-i", "sine=frequency=220:duration=2.0",
+      "-c:a", "aac", shortBgm,
+    ]);
+    expect(vRes.code).toBe(0);
+    expect(aRes.code).toBe(0);
+
+    const assetsById = new Map<string, MediaAsset>([
+      [
+        "tr-v",
+        {
+          id: "tr-v",
+          filename: "tr-vid.mp4",
+          originalName: "Transition Clip",
+          kind: "video",
+          mimeType: "video/mp4",
+          url: "/api/media/tr-v/stream",
+          durationSec: 2.5,
+          width: 640,
+          height: 640,
+          fps: 30,
+          hasAudio: true,
+          beatMarkersSec: [],
+          energyPeaksSec: [],
+          silenceRanges: [],
+          isBuiltIn: false,
+        },
+      ],
+      [
+        "short-bgm",
+        {
+          id: "short-bgm",
+          filename: "short-bgm.m4a",
+          originalName: "Short Loop",
+          kind: "audio",
+          audioCategory: "bgm",
+          mimeType: "audio/mp4",
+          url: "/api/media/short-bgm/stream",
+          durationSec: 2.0,
+          hasAudio: true,
+          beatMarkersSec: [],
+          energyPeaksSec: [],
+          silenceRanges: [],
+          isBuiltIn: false,
+        },
+      ],
+    ]);
+
+    const filePathsById = new Map([
+      ["tr-v", vidClip],
+      ["short-bgm", shortBgm],
+    ]);
+
+    const project = CutProjectSchema.parse({
+      id: "p-loop-fix",
+      title: "Loop Fix",
+      templateId: "hype-zoom",
+      promptUsed: "loop",
+      modeUsed: "template",
+      aspectRatio: "1:1",
+      fps: 30,
+      targetDurationSec: 3.5,
+      clips: [
+        {
+          id: "c1",
+          assetId: "tr-v",
+          sourceStartSec: 0,
+          sourceEndSec: 1.9,
+          speed: 1,
+          motion: "none",
+          transitionIn: "cut",
+          transitionDurationSec: 0,
+          filter: "none",
+          muteOriginalAudio: false,
+          volume: 0.7,
+        },
+        {
+          id: "c2",
+          assetId: "tr-v",
+          sourceStartSec: 0,
+          sourceEndSec: 1.9,
+          speed: 1,
+          motion: "none",
+          transitionIn: "crossfade",
+          transitionDurationSec: 0.3,
+          filter: "none",
+          muteOriginalAudio: false,
+          volume: 0.7,
+        },
+      ],
+      overlays: [],
+      audioTracks: [
+        {
+          id: "aud-loop",
+          kind: "bgm",
+          assetId: "short-bgm",
+          timelineStartSec: 0,
+          durationSec: 3.5,
+          startOffsetSec: 1.5,
+          volume: 0.8,
+          fadeInSec: 0.1,
+          fadeOutSec: 0.2,
+          beatMarkersSec: [],
+        },
+      ],
+    });
+
+    const plan = buildFfmpegRenderPlan({
+      project,
+      quality: "720p",
+      assetsById,
+      filePathsById,
+      outputPath: outPath,
+    });
+    const fc = plan.args[plan.args.indexOf("-filter_complex") + 1] ?? "";
+    expect(fc).toContain("atrim=start=1.500:duration=3.500");
+    expect(fc).toContain("afade=t=in:st=0:d=0.30");
+    expect(fc).toContain("afade=t=out:st=1.60:d=0.30");
+
+    const renderRes = await runProcess("ffmpeg", plan.args, { timeoutMs: 60_000 });
+    expect(renderRes.code, renderRes.stderr).toBe(0);
+    const probed = await probeMediaFile(outPath, "video");
+    expect(probed.durationSec).toBeLessThan(3.8);
+    expect(probed.durationSec).toBeGreaterThan(3.2);
+  }, 60_000);
+
+  it("detects rotated portrait phone video dimensions and converts CSS rgb/rgba ASS colors", async () => {
+    const rawVid = path.join(tempRoot, "rot-src.mp4");
+    const rotVid = path.join(tempRoot, "rot-phone.mp4");
+    const r1 = await runProcess("ffmpeg", [
+      "-y", "-f", "lavfi", "-i", "color=c=blue:s=640x360:d=0.5",
+      "-c:v", "libx264", "-preset", "ultrafast", rawVid,
+    ]);
+    const r2 = await runProcess("ffmpeg", [
+      "-y", "-display_rotation:v:0", "90", "-i", rawVid, "-c", "copy", rotVid,
+    ]);
+    expect(r1.code).toBe(0);
+    expect(r2.code).toBe(0);
+
+    const probed = await probeMediaFile(rotVid, "video");
+    expect(probed.width).toBe(360);
+    expect(probed.height).toBe(640);
+
+    const ass = generateAssSubtitles(
+      [
+        {
+          id: "t-css",
+          text: "RGBA TEST",
+          startSec: 0,
+          endSec: 1.5,
+          position: "center",
+          style: "capcut-pop",
+          scale: 1,
+          rotationDeg: 0,
+          animation: "none",
+          color: "rgba(255, 128, 0, 0.5)",
+          bgColor: "#0F0",
+        },
+      ],
+      "9:16",
+      "720p"
+    );
+    expect(ass).toContain("\\1c&H800080FF&");
+    expect(ass).toContain("\\3c&H0000FF00&\\4c&H0000FF00&");
+  }, 30_000);
+
+  it("preserves user stickers across Offline AI Remix and cleans waveform cache on delete", () => {
+    const cacheRoot = path.join(tempRoot, "cache-hygiene");
+    const uploadsDir = path.join(cacheRoot, "uploads");
+    const proxiesDir = path.join(cacheRoot, "proxies");
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    fs.mkdirSync(proxiesDir, { recursive: true });
+
+    const mediaPath = path.join(uploadsDir, "clip-x.mp4");
+    const thumbPath = path.join(proxiesDir, "asset-del.jpg");
+    const wavePath = path.join(proxiesDir, "asset-del.wave-80.json");
+    fs.writeFileSync(mediaPath, "mp4");
+    fs.writeFileSync(thumbPath, "jpg");
+    fs.writeFileSync(wavePath, "[0.1,0.5]");
+
+    const dbPath = path.join(cacheRoot, "assets.json");
+    const store = new MediaStore(dbPath);
+    const clipAsset: MediaAsset = {
+      id: "asset-del",
+      filename: "clip-x.mp4",
+      originalName: "Delete Me",
+      kind: "video",
+      mimeType: "video/mp4",
+      url: "/api/media/asset-del/stream",
+      durationSec: 4,
+      hasAudio: false,
+      beatMarkersSec: [],
+      energyPeaksSec: [],
+      silenceRanges: [],
+      isBuiltIn: false,
+    };
+    const logoAsset: MediaAsset = {
+      id: "logo-keep",
+      filename: "logo.png",
+      originalName: "Logo",
+      kind: "image",
+      mimeType: "image/png",
+      url: "/api/media/logo-keep/stream",
+      durationSec: 6,
+      hasAudio: false,
+      beatMarkersSec: [],
+      energyPeaksSec: [],
+      silenceRanges: [],
+      isBuiltIn: false,
+    };
+    store.upsert(clipAsset, mediaPath, thumbPath);
+    expect(store.remove("asset-del")).toBe(true);
+    expect(fs.existsSync(mediaPath)).toBe(false);
+    expect(fs.existsSync(thumbPath)).toBe(false);
+    expect(fs.existsSync(wavePath)).toBe(false);
+
+    const assetsById = new Map<string, MediaAsset>([
+      [clipAsset.id, clipAsset],
+      [logoAsset.id, logoAsset],
+    ]);
+    const prevProject = CutProjectSchema.parse({
+      id: "p-remix-stk",
+      title: "With Stickers",
+      templateId: "hype-zoom",
+      promptUsed: "init",
+      modeUsed: "offline",
+      aspectRatio: "9:16",
+      fps: 30,
+      targetDurationSec: 4,
+      clips: [
+        {
+          id: "c1",
+          assetId: clipAsset.id,
+          sourceStartSec: 0,
+          sourceEndSec: 4,
+          speed: 1,
+          motion: "none",
+          transitionIn: "cut",
+          transitionDurationSec: 0,
+          filter: "none",
+          muteOriginalAudio: true,
+          volume: 0,
+        },
+      ],
+      overlays: [],
+      stickers: [
+        {
+          id: "stk-keep",
+          stickerId: "custom-image",
+          assetId: logoAsset.id,
+          startSec: 0,
+          endSec: 2.5,
+          xNorm: 0.8,
+          yNorm: 0.2,
+          scale: 0.9,
+          rotationDeg: 0,
+        },
+      ],
+    });
+
+    const remixed = generateOfflineCutProject(
+      {
+        prompt: "Make it 5s faster",
+        assetIds: [clipAsset.id],
+        mode: "offline",
+        previousProject: prevProject,
+      },
+      assetsById
+    );
+    expect(remixed.project.stickers.length).toBe(1);
+    expect(remixed.project.stickers[0]?.assetId).toBe(logoAsset.id);
+
+    const cleared = generateOfflineCutProject(
+      {
+        prompt: "remove stickers",
+        assetIds: [clipAsset.id],
+        mode: "offline",
+        previousProject: prevProject,
+      },
+      assetsById
+    );
+    expect(cleared.project.stickers.length).toBe(0);
+  });
+});

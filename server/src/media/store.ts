@@ -106,6 +106,19 @@ export class MediaStore {
       if (existing.thumbPath && fs.existsSync(existing.thumbPath)) {
         fs.unlinkSync(existing.thumbPath);
       }
+      const proxiesDir = path.join(path.dirname(this.dbPath), "proxies");
+      if (fs.existsSync(proxiesDir)) {
+        const wavePrefix = `${id}.wave-`;
+        for (const name of fs.readdirSync(proxiesDir)) {
+          if (name.startsWith(wavePrefix)) {
+            try {
+              fs.unlinkSync(path.join(proxiesDir, name));
+            } catch {
+              // ignore cache cleanup failures
+            }
+          }
+        }
+      }
     }
     this.save();
     return true;

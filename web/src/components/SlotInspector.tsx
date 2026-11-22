@@ -323,28 +323,48 @@ export function SlotInspector({
             </label>
           </div>
 
-          <button
-            type="button"
-            onClick={() =>
-              onUpdateSlot(slot.id, {
-                muteOriginalAudio: !slot.muteOriginalAudio,
-                volume: slot.muteOriginalAudio ? 1 : 0,
-              })
-            }
-            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-[#111520] px-3 py-1.5 text-xs font-medium text-slate-200 hover:border-cyan-400"
-          >
-            {slot.muteOriginalAudio ? (
-              <>
-                <VolumeX className="size-3.5 text-slate-400" aria-hidden="true" />
-                <span>Original Audio Muted</span>
-              </>
-            ) : (
-              <>
-                <Volume2 className="size-3.5 text-cyan-400" aria-hidden="true" />
-                <span>Original Audio On ({Math.round(slot.volume * 100)}%)</span>
-              </>
+          <div className="flex flex-col gap-1.5 rounded-xl border border-slate-800 bg-[#111520] p-2">
+            <button
+              type="button"
+              onClick={() =>
+                onUpdateSlot(slot.id, {
+                  muteOriginalAudio: !slot.muteOriginalAudio,
+                  volume: slot.muteOriginalAudio ? Math.max(0.2, slot.volume || 1) : slot.volume,
+                })
+              }
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-700 bg-[#090b10] px-3 py-1.5 text-xs font-medium text-slate-200 hover:border-cyan-400"
+            >
+              {slot.muteOriginalAudio ? (
+                <>
+                  <VolumeX className="size-3.5 text-slate-400" aria-hidden="true" />
+                  <span>Original Audio Muted</span>
+                </>
+              ) : (
+                <>
+                  <Volume2 className="size-3.5 text-cyan-400" aria-hidden="true" />
+                  <span>Original Audio On ({Math.round(slot.volume * 100)}%)</span>
+                </>
+              )}
+            </button>
+            {!slot.muteOriginalAudio && (
+              <label className="flex flex-col gap-0.5 text-[11px] text-slate-400">
+                <span>Clip Audio Volume ({Math.round(slot.volume * 100)}%)</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={2}
+                  step={0.05}
+                  value={slot.volume}
+                  onPointerDown={onBeginSlider}
+                  onPointerUp={onEndSlider}
+                  onBlur={onEndSlider}
+                  onChange={(e) =>
+                    onUpdateSlot(slot.id, { volume: Number(e.target.value) }, false)
+                  }
+                />
+              </label>
             )}
-          </button>
+          </div>
         </section>
       )}
 
@@ -714,6 +734,52 @@ export function SlotInspector({
                     }
                   />
                 </label>
+                <label className="flex flex-col">
+                  <span>Start ({selectedOverlay.startSec.toFixed(1)}s)</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={Math.max(0, selectedOverlay.endSec - 0.35)}
+                    step={0.1}
+                    value={selectedOverlay.startSec}
+                    onPointerDown={onBeginSlider}
+                    onPointerUp={onEndSlider}
+                    onBlur={onEndSlider}
+                    onChange={(e) =>
+                      onUpdateOverlays(
+                        project.overlays.map((o) =>
+                          o.id === selectedOverlay.id
+                            ? { ...o, startSec: Number(e.target.value) }
+                            : o
+                        ),
+                        false
+                      )
+                    }
+                  />
+                </label>
+                <label className="flex flex-col">
+                  <span>End ({selectedOverlay.endSec.toFixed(1)}s)</span>
+                  <input
+                    type="range"
+                    min={Math.min(project.targetDurationSec, selectedOverlay.startSec + 0.35)}
+                    max={Math.max(0.4, project.targetDurationSec)}
+                    step={0.1}
+                    value={Math.min(project.targetDurationSec, selectedOverlay.endSec)}
+                    onPointerDown={onBeginSlider}
+                    onPointerUp={onEndSlider}
+                    onBlur={onEndSlider}
+                    onChange={(e) =>
+                      onUpdateOverlays(
+                        project.overlays.map((o) =>
+                          o.id === selectedOverlay.id
+                            ? { ...o, endSec: Number(e.target.value) }
+                            : o
+                        ),
+                        false
+                      )
+                    }
+                  />
+                </label>
               </div>
             </div>
           ) : (
@@ -852,27 +918,98 @@ export function SlotInspector({
                   <Trash2 className="size-3.5" aria-hidden="true" />
                 </button>
               </div>
-              <label className="flex flex-col text-[11px] text-slate-400">
-                <span>Sticker Size ({selectedSticker.scale.toFixed(2)}x)</span>
-                <input
-                  type="range"
-                  min={0.4}
-                  max={2.2}
-                  step={0.05}
-                  value={selectedSticker.scale}
-                  onPointerDown={onBeginSlider}
-                  onPointerUp={onEndSlider}
-                  onBlur={onEndSlider}
-                  onChange={(e) =>
-                    onUpdateStickers(
-                      (project.stickers || []).map((s) =>
-                        s.id === selectedSticker.id ? { ...s, scale: Number(e.target.value) } : s
-                      ),
-                      false
-                    )
-                  }
-                />
-              </label>
+              <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-400">
+                <label className="flex flex-col">
+                  <span>Sticker Size ({selectedSticker.scale.toFixed(2)}x)</span>
+                  <input
+                    type="range"
+                    min={0.4}
+                    max={2.2}
+                    step={0.05}
+                    value={selectedSticker.scale}
+                    onPointerDown={onBeginSlider}
+                    onPointerUp={onEndSlider}
+                    onBlur={onEndSlider}
+                    onChange={(e) =>
+                      onUpdateStickers(
+                        (project.stickers || []).map((s) =>
+                          s.id === selectedSticker.id ? { ...s, scale: Number(e.target.value) } : s
+                        ),
+                        false
+                      )
+                    }
+                  />
+                </label>
+                <label className="flex flex-col">
+                  <span>Rotate ({Math.round(selectedSticker.rotationDeg)}°)</span>
+                  <input
+                    type="range"
+                    min={-180}
+                    max={180}
+                    step={2}
+                    value={selectedSticker.rotationDeg}
+                    onPointerDown={onBeginSlider}
+                    onPointerUp={onEndSlider}
+                    onBlur={onEndSlider}
+                    onChange={(e) =>
+                      onUpdateStickers(
+                        (project.stickers || []).map((s) =>
+                          s.id === selectedSticker.id
+                            ? { ...s, rotationDeg: Number(e.target.value) }
+                            : s
+                        ),
+                        false
+                      )
+                    }
+                  />
+                </label>
+                <label className="flex flex-col">
+                  <span>Start ({selectedSticker.startSec.toFixed(1)}s)</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={Math.max(0, selectedSticker.endSec - 0.35)}
+                    step={0.1}
+                    value={selectedSticker.startSec}
+                    onPointerDown={onBeginSlider}
+                    onPointerUp={onEndSlider}
+                    onBlur={onEndSlider}
+                    onChange={(e) =>
+                      onUpdateStickers(
+                        (project.stickers || []).map((s) =>
+                          s.id === selectedSticker.id
+                            ? { ...s, startSec: Number(e.target.value) }
+                            : s
+                        ),
+                        false
+                      )
+                    }
+                  />
+                </label>
+                <label className="flex flex-col">
+                  <span>End ({selectedSticker.endSec.toFixed(1)}s)</span>
+                  <input
+                    type="range"
+                    min={Math.min(project.targetDurationSec, selectedSticker.startSec + 0.35)}
+                    max={Math.max(0.4, project.targetDurationSec)}
+                    step={0.1}
+                    value={Math.min(project.targetDurationSec, selectedSticker.endSec)}
+                    onPointerDown={onBeginSlider}
+                    onPointerUp={onEndSlider}
+                    onBlur={onEndSlider}
+                    onChange={(e) =>
+                      onUpdateStickers(
+                        (project.stickers || []).map((s) =>
+                          s.id === selectedSticker.id
+                            ? { ...s, endSec: Number(e.target.value) }
+                            : s
+                        ),
+                        false
+                      )
+                    }
+                  />
+                </label>
+              </div>
             </div>
           )}
         </section>

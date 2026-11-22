@@ -20,6 +20,8 @@ import {
   type ClipSlot,
   type CutProject,
   type MediaAsset,
+  type StickerOverlay,
+  type TextOverlay,
   type TransitionType,
 } from "@cutflow/shared";
 import { fetchWaveform } from "../api/client";
@@ -38,6 +40,16 @@ interface TimelineBarProps {
   onDuplicateSlot: (slotId: string) => void;
   onMoveSlot: (slotId: string, dir: -1 | 1) => void;
   onUpdateSlot: (slotId: string, patch: Partial<ClipSlot>, recordHistory?: boolean) => void;
+  onUpdateOverlay: (
+    overlayId: string,
+    patch: Partial<TextOverlay>,
+    recordHistory?: boolean
+  ) => void;
+  onUpdateSticker: (
+    stickerId: string,
+    patch: Partial<StickerOverlay>,
+    recordHistory?: boolean
+  ) => void;
   onBeginDrag?: () => void;
   onEndDrag?: () => void;
   onSelectSlot: (slotId: string) => void;
@@ -72,6 +84,8 @@ export function TimelineBar({
   onDuplicateSlot,
   onMoveSlot,
   onUpdateSlot,
+  onUpdateOverlay,
+  onUpdateSticker,
   onBeginDrag,
   onEndDrag,
   onSelectSlot,
@@ -144,6 +158,42 @@ export function TimelineBar({
       } else {
         const nextEnd = Math.min(maxAssetDur, Math.max(origStart + 0.35, origEnd + deltaSec));
         onUpdateSlot(slot.id, { sourceEndSec: Number(nextEnd.toFixed(2)) }, false);
+      }
+    };
+
+    const onEnd = () => {
+      onEndDrag?.();
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("lostpointercapture", onEnd);
+    };
+
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("lostpointercapture", onEnd);
+  };
+
+  const startTimedRangeTrimDrag = (
+    e: React.PointerEvent<HTMLButtonElement>,
+    origStart: number,
+    origEnd: number,
+    edge: "start" | "end",
+    onPatch: (patch: { startSec?: number; endSec?: number }) => void
+  ) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    onBeginDrag?.();
+    const startX = e.clientX;
+
+    const onMove = (ev: PointerEvent) => {
+      if (!handle.hasPointerCapture(ev.pointerId)) return;
+      const deltaSec = (ev.clientX - startX) / pxPerSec;
+      if (edge === "start") {
+        const nextStart = Math.max(0, Math.min(origEnd - 0.35, origStart + deltaSec));
+        onPatch({ startSec: Number(nextStart.toFixed(2)) });
+      } else {
+        const nextEnd = Math.min(totalSec, Math.max(origStart + 0.35, origEnd + deltaSec));
+        onPatch({ endSec: Number(nextEnd.toFixed(2)) });
       }
     };
 
@@ -419,47 +469,106 @@ export function TimelineBar({
               const width = Math.max(44, (ov.endSec - ov.startSec) * pxPerSec);
               const active = selection.overlayId === ov.id;
               return (
-                <button
+                <div
                   key={ov.id}
-                  type="button"
-                  onClick={() => {
-                    onSelectOverlay(ov.id);
-                    onSeek(ov.startSec + 0.05);
-                  }}
                   style={{ left: `${left}px`, width: `${width}px` }}
-                  className={`absolute top-0 flex h-6 items-center gap-1 overflow-hidden rounded-md border px-1.5 text-[10px] font-semibold ${
+                  className={`absolute top-0 flex h-6 overflow-hidden rounded-md border text-[10px] font-semibold ${
                     active
                       ? "z-10 border-amber-300 bg-amber-400/30 text-amber-100 ring-1 ring-amber-300"
                       : "border-amber-400/45 bg-amber-500/15 text-amber-200"
                   }`}
                 >
-                  <Type className="size-3 shrink-0" aria-hidden="true" />
-                  <span className="truncate">{ov.text}</span>
-                </button>
+                  {active && (
+                    <button
+                      type="button"
+                      aria-label={`Trim start of text ${ov.text}`}
+                      onPointerDown={(e) =>
+                        startTimedRangeTrimDrag(e, ov.startSec, ov.endSec, "start", (patch) =>
+                          onUpdateOverlay(ov.id, patch, false)
+                        )
+                      }
+                      className="drag-handle flex h-full w-2 shrink-0 items-center justify-center bg-amber-300 text-slate-950"
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectOverlay(ov.id);
+                      onSeek(ov.startSec + 0.05);
+                    }}
+                    className="flex min-w-0 flex-1 items-center gap-1 px-1.5 text-left"
+                  >
+                    <Type className="size-3 shrink-0" aria-hidden="true" />
+                    <span className="truncate">{ov.text}</span>
+                  </button>
+                  {active && (
+                    <button
+                      type="button"
+                      aria-label={`Trim end of text ${ov.text}`}
+                      onPointerDown={(e) =>
+                        startTimedRangeTrimDrag(e, ov.startSec, ov.endSec, "end", (patch) =>
+                          onUpdateOverlay(ov.id, patch, false)
+                        )
+                      }
+                      className="drag-handle flex h-full w-2 shrink-0 items-center justify-center bg-amber-300 text-slate-950"
+                    />
+                  )}
+                </div>
               );
             })}
             {(project.stickers || []).map((st) => {
               const left = st.startSec * pxPerSec;
               const width = Math.max(36, (st.endSec - st.startSec) * pxPerSec);
               const active = selection.stickerId === st.id;
+              const stickerLabel = st.assetId
+                ? (assetsById.get(st.assetId)?.originalName ?? "Logo")
+                : st.stickerId;
               return (
-                <button
+                <div
                   key={st.id}
-                  type="button"
-                  onClick={() => {
-                    onSelectSticker(st.id);
-                    onSeek(st.startSec + 0.05);
-                  }}
                   style={{ left: `${left}px`, width: `${width}px` }}
-                  className={`absolute top-0 flex h-6 items-center gap-1 overflow-hidden rounded-md border px-1.5 text-[10px] font-semibold ${
+                  className={`absolute top-0 flex h-6 overflow-hidden rounded-md border text-[10px] font-semibold ${
                     active
-                      ? "z-10 border-emerald-300 bg-emerald-400/30 text-emerald-100"
+                      ? "z-10 border-emerald-300 bg-emerald-400/30 text-emerald-100 ring-1 ring-emerald-300"
                       : "border-emerald-400/45 bg-emerald-500/15 text-emerald-200"
                   }`}
                 >
-                  <Sticker className="size-3 shrink-0" aria-hidden="true" />
-                  <span className="truncate">{st.stickerId}</span>
-                </button>
+                  {active && (
+                    <button
+                      type="button"
+                      aria-label={`Trim start of sticker ${stickerLabel}`}
+                      onPointerDown={(e) =>
+                        startTimedRangeTrimDrag(e, st.startSec, st.endSec, "start", (patch) =>
+                          onUpdateSticker(st.id, patch, false)
+                        )
+                      }
+                      className="drag-handle flex h-full w-2 shrink-0 items-center justify-center bg-emerald-300 text-slate-950"
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectSticker(st.id);
+                      onSeek(st.startSec + 0.05);
+                    }}
+                    className="flex min-w-0 flex-1 items-center gap-1 px-1.5 text-left"
+                  >
+                    <Sticker className="size-3 shrink-0" aria-hidden="true" />
+                    <span className="truncate">{stickerLabel}</span>
+                  </button>
+                  {active && (
+                    <button
+                      type="button"
+                      aria-label={`Trim end of sticker ${stickerLabel}`}
+                      onPointerDown={(e) =>
+                        startTimedRangeTrimDrag(e, st.startSec, st.endSec, "end", (patch) =>
+                          onUpdateSticker(st.id, patch, false)
+                        )
+                      }
+                      className="drag-handle flex h-full w-2 shrink-0 items-center justify-center bg-emerald-300 text-slate-950"
+                    />
+                  )}
+                </div>
               );
             })}
             {project.overlays.length === 0 && (project.stickers || []).length === 0 && (

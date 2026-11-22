@@ -24,14 +24,50 @@ function escapeAssText(text: string): string {
     .replace(/\r?\n/g, "\\N");
 }
 
-function hexToAssBgr(hex?: string): string | null {
-  if (!hex) return null;
-  const clean = hex.trim().replace(/^#/, "");
-  if (!/^[0-9a-fA-F]{6}$/.test(clean)) return null;
-  const rr = clean.slice(0, 2);
-  const gg = clean.slice(2, 4);
-  const bb = clean.slice(4, 6);
-  return `&H00${bb}${gg}${rr}`.toUpperCase();
+function hexToAssBgr(color?: string): string | null {
+  if (!color) return null;
+  const trimmed = color.trim();
+
+  if (trimmed.startsWith("#")) {
+    const clean = trimmed.slice(1);
+    if (/^[0-9a-fA-F]{3}$/.test(clean)) {
+      const r = clean[0] + clean[0];
+      const g = clean[1] + clean[1];
+      const b = clean[2] + clean[2];
+      return `&H00${b}${g}${r}`.toUpperCase();
+    }
+    if (/^[0-9a-fA-F]{6}$/.test(clean)) {
+      const rr = clean.slice(0, 2);
+      const gg = clean.slice(2, 4);
+      const bb = clean.slice(4, 6);
+      return `&H00${bb}${gg}${rr}`.toUpperCase();
+    }
+    if (/^[0-9a-fA-F]{8}$/.test(clean)) {
+      const rr = clean.slice(0, 2);
+      const gg = clean.slice(2, 4);
+      const bb = clean.slice(4, 6);
+      const alpha = Math.max(0, Math.min(255, 255 - parseInt(clean.slice(6, 8), 16)));
+      const aa = alpha.toString(16).padStart(2, "0");
+      return `&H${aa}${bb}${gg}${rr}`.toUpperCase();
+    }
+    return null;
+  }
+
+  const rgbaMatch =
+    /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*([01](?:\.\d+)?|\.\d+))?\s*\)$/i.exec(
+      trimmed
+    );
+  if (rgbaMatch) {
+    const clamp255 = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
+    const rr = clamp255(Number(rgbaMatch[1]));
+    const gg = clamp255(Number(rgbaMatch[2]));
+    const bb = clamp255(Number(rgbaMatch[3]));
+    const alphaFloat = rgbaMatch[4] !== undefined ? Math.max(0, Math.min(1, Number(rgbaMatch[4]))) : 1;
+    const aa = clamp255((1 - alphaFloat) * 255);
+    return `&H${aa}${bb}${gg}${rr}`.toUpperCase();
+  }
+
+  return null;
 }
 
 function styleNameFor(style: OverlayStyle, pos: OverlayPosition): string {

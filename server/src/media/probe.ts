@@ -229,11 +229,27 @@ export async function probeMediaFile(
       avg_frame_rate?: string;
       r_frame_rate?: string;
       duration?: string;
+      tags?: { rotate?: string };
+      side_data_list?: Array<{ rotation?: number }>;
     }>;
   };
 
   const videoStream = parsed.streams?.find((s) => s.codec_type === "video");
   const audioStream = parsed.streams?.find((s) => s.codec_type === "audio");
+
+  const sideRotation = videoStream?.side_data_list?.find(
+    (sd) => typeof sd.rotation === "number"
+  )?.rotation;
+  const tagRotation = videoStream?.tags?.rotate ? Number(videoStream.tags.rotate) : undefined;
+  const rotationDeg =
+    typeof sideRotation === "number" && Number.isFinite(sideRotation)
+      ? sideRotation
+      : typeof tagRotation === "number" && Number.isFinite(tagRotation)
+        ? tagRotation
+        : 0;
+  const swappedDims = Math.round(Math.abs(rotationDeg)) % 180 === 90;
+  const displayWidth = swappedDims ? videoStream?.height : videoStream?.width;
+  const displayHeight = swappedDims ? videoStream?.width : videoStream?.height;
 
   const rawDuration = Number(
     parsed.format?.duration ?? videoStream?.duration ?? (kind === "image" ? 5 : 3)
@@ -260,8 +276,8 @@ export async function probeMediaFile(
 
   return {
     durationSec,
-    width: videoStream?.width,
-    height: videoStream?.height,
+    width: displayWidth,
+    height: displayHeight,
     fps: parseFrameRate(videoStream?.avg_frame_rate || videoStream?.r_frame_rate),
     hasAudio,
     beatMarkersSec,

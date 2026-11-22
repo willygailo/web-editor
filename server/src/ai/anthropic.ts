@@ -10,7 +10,7 @@ import {
   type MediaAsset,
 } from "@cutflow/shared";
 import { runProcess } from "../media/exec.js";
-import { resolveAiAudioTracks, sanitizeCutProject } from "./sanitize.js";
+import { resolveAiAudioTracks, resolveAiStickers, sanitizeCutProject } from "./sanitize.js";
 
 const workspaceCache = new Map<string, string>();
 
@@ -387,6 +387,10 @@ export async function generateAnthropicCutProject(params: {
     previousProject: request.previousProject,
     chosenBgm: chosenAudio,
   });
+  const preservedStickers = resolveAiStickers({
+    previousProject: request.previousProject,
+    prompt: request.prompt,
+  });
 
   const draft: CutProjectInput = {
     id: request.previousProject?.id ?? crypto.randomUUID(),
@@ -406,6 +410,7 @@ export async function generateAnthropicCutProject(params: {
       ...o,
       id: `txt-${idx + 1}`,
     })),
+    stickers: preservedStickers,
     audioTrack: resolvedTracks[0],
     audioTracks: resolvedTracks,
   };

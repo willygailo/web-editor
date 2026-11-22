@@ -174,7 +174,12 @@ export function App() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      if (
+        target &&
+        (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable)
+      ) {
+        return;
+      }
 
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
@@ -186,6 +191,22 @@ export function App() {
       } else if (e.key.toLowerCase() === "s" && project) {
         e.preventDefault();
         store.splitAtPlayhead(currentTime);
+      } else if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && project) {
+        e.preventDefault();
+        const step = e.shiftKey ? 1.0 : 0.1;
+        const delta = e.key === "ArrowRight" ? step : -step;
+        setIsPlaying(false);
+        setCurrentTime((t) =>
+          Number(Math.max(0, Math.min(project.targetDurationSec, t + delta)).toFixed(2))
+        );
+      } else if (e.key === "Home" && project) {
+        e.preventDefault();
+        setIsPlaying(false);
+        setCurrentTime(0);
+      } else if (e.key === "End" && project) {
+        e.preventDefault();
+        setIsPlaying(false);
+        setCurrentTime(project.targetDurationSec);
       } else if ((e.key === "Delete" || e.key === "Backspace") && project) {
         e.preventDefault();
         store.deleteSelection();
@@ -728,6 +749,18 @@ export function App() {
             onDuplicateSlot={store.duplicateSlot}
             onMoveSlot={store.moveSlot}
             onUpdateSlot={store.updateSlot}
+            onUpdateOverlay={(overlayId, patch, recordHistory) =>
+              store.updateOverlays(
+                (prev) => prev.map((o) => (o.id === overlayId ? { ...o, ...patch } : o)),
+                recordHistory
+              )
+            }
+            onUpdateSticker={(stickerId, patch, recordHistory) =>
+              store.updateStickers(
+                (prev) => prev.map((s) => (s.id === stickerId ? { ...s, ...patch } : s)),
+                recordHistory
+              )
+            }
             onBeginDrag={store.beginGesture}
             onEndDrag={store.endGesture}
             onSelectSlot={(id) => {

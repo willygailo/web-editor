@@ -10,11 +10,60 @@ import { generateAssSubtitles } from "./subtitles.js";
 
 type Listener = (job: RenderJob) => void;
 
+const MAX_RETAINED_RENDERS = 10;
+const RENDER_TTL_MS = 2 * 60 * 60 * 1000;
+
 export class RenderJobQueue {
   private jobs = new Map<string, RenderJob>();
   private listeners = new Map<string, Set<Listener>>();
+  private queueTail: Promise<void> = Promise.resolve();
 
-  constructor(private readonly config: ServerConfig) {}
+  constructor(private readonly config: ServerConfig) {
+    this.pruneOldRenders();
+  }
+
+  private pruneOldRenders(): void {
+    try {
+      if (!fs.existsSync(this.config.rendersDir)) return;
+      const now = Date.now();
+      const entries = fs
+        .readdirSync(this.config.rendersDir)
+        .map((name) => {
+          const fullPath = path.join(this.config.rendersDir, name);
+          try {
+            const stat = fs.statSync(fullPath);
+            return { name, fullPath, mtimeMs: stat.mtimeMs };
+          } catch {
+            return null;
+          }
+        })
+        .filter((e): e is { name: string; fullPath: string; mtimeMs: number } => Boolean(e))
+        .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+      entries.forEach((entry, idx) => {
+        const isTempAss = entry.name.endsWith(".ass") && now - entry.mtimeMs > 120_000;
+        const isExpiredMp4 =
+          entry.name.endsWith(".mp4") &&
+          (idx >= MAX_RETAINED_RENDERS || now - entry.mtimeMs > RENDER_TTL_MS);
+        if (isTempAss || isExpiredMp4) {
+          try {
+            fs.unlinkSync(entry.fullPath);
+          } catch {
+            // ignore cleanup failures
+          }
+        }
+      });
+
+      const settledIds = Array.from(this.jobs.values())
+        .filter((j) => j.status === "completed" || j.status === "failed")
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      for (const oldJob of settledIds.slice(MAX_RETAINED_RENDERS * 2)) {
+        this.jobs.delete(oldJob.id);
+      }
+    } catch {
+      // ignore pruning errors
+    }
+  }
 
   get(jobId: string): RenderJob | undefined {
     return this.jobs.get(jobId);
@@ -53,12 +102,14 @@ export class RenderJobQueue {
       id,
       status: "queued",
       progress: 2,
-      stage: "Preparing FFmpeg render graph...",
+      stage: "Queued for FFmpeg render...",
       createdAt: new Date().toISOString(),
     };
     this.emit(job);
 
-    void this.executeJob(id, project, quality, assetsById, filePathsById);
+    this.queueTail = this.queueTail.then(() =>
+      this.executeJob(id, project, quality, assetsById, filePathsById)
+    );
     return job;
   }
 
@@ -160,6 +211,8 @@ export class RenderJobQueue {
         error: err instanceof Error ? err.message : String(err),
         createdAt: this.jobs.get(jobId)?.createdAt ?? new Date().toISOString(),
       });
+    } finally {
+      this.pruneOldRenders();
     }
   }
 

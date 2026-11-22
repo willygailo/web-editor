@@ -3,6 +3,7 @@ import {
   buildProjectFromTemplate,
   computeTimelineLayout,
   CUT_TEMPLATE_PRESETS,
+  getProjectAudioTracks,
   getTemplatePresetById,
   type AspectRatio,
   type AutoEditRequest,
@@ -13,7 +14,7 @@ import {
   type MediaAsset,
   type TextOverlay,
 } from "@cutflow/shared";
-import { resolveAiAudioTracks, sanitizeCutProject } from "./sanitize.js";
+import { resolveAiAudioTracks, resolveAiStickers, sanitizeCutProject } from "./sanitize.js";
 
 function pickTemplateFromPrompt(
   prompt: string,
@@ -200,11 +201,16 @@ export function generateOfflineCutProject(
     preset
   );
 
+  const prevTracks = prev ? getProjectAudioTracks(prev) : [];
   const audioAsset = pickDefaultAudio(
     preset,
-    request.audioAssetId ?? prev?.audioTrack?.assetId,
+    request.audioAssetId ?? prevTracks[0]?.assetId,
     assetsById
   );
+  const preservedStickers = resolveAiStickers({
+    previousProject: prev,
+    prompt: request.prompt,
+  });
 
   if (preset.isCustom && preset.slots.length > 0 && request.templateId === preset.id) {
     const built = buildProjectFromTemplate({
@@ -224,6 +230,7 @@ export function generateOfflineCutProject(
         ...built,
         promptUsed: request.prompt,
         modeUsed: "offline",
+        stickers: preservedStickers.length > 0 ? preservedStickers : built.stickers,
         audioTrack: mergedTracks[0],
         audioTracks: mergedTracks,
       },
@@ -341,7 +348,7 @@ export function generateOfflineCutProject(
     targetDurationSec: layout.totalDurationSec,
     clips,
     overlays,
-    stickers: [],
+    stickers: preservedStickers,
     audioTrack: mergedTracks[0],
     audioTracks: mergedTracks,
   };

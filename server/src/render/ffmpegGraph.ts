@@ -274,13 +274,24 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
 
     if (asset.kind === "video" && asset.hasAudio && !slot.muteOriginalAudio && slot.volume > 0) {
       const delayMs = Math.max(0, Math.round(slotLayout.timelineStartSec * 1000));
+      const nextSlot = layout.slots[idx + 1];
+      const nextOverlap = nextSlot?.effectiveTransitionInSec ?? 0;
       const afOps = [
         ...(slot.reversed ? ["areverse"] : []),
         ...buildAtempoChain(slot.speed),
         `volume=${slot.volume.toFixed(2)}`,
-        `adelay=${delayMs}|${delayMs}`,
-        "aformat=sample_rates=44100:channel_layouts=stereo",
       ];
+      if (slotLayout.effectiveTransitionInSec > 0.05) {
+        afOps.push(`afade=t=in:st=0:d=${slotLayout.effectiveTransitionInSec.toFixed(2)}`);
+      }
+      if (nextOverlap > 0.05 && slotLayout.rawDurationSec > nextOverlap + 0.05) {
+        const fadeOutStart = Math.max(0, slotLayout.rawDurationSec - nextOverlap);
+        afOps.push(`afade=t=out:st=${fadeOutStart.toFixed(2)}:d=${nextOverlap.toFixed(2)}`);
+      }
+      afOps.push(
+        `adelay=${delayMs}|${delayMs}`,
+        "aformat=sample_rates=44100:channel_layouts=stereo"
+      );
       filterParts.push(`[${idx}:a]${afOps.join(",")}[aslot${idx}]`);
       voiceBranches.push(`[aslot${idx}]`);
     }
@@ -410,33 +421,20 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
     if (remainingTotal <= 0.05) return;
 
     const audioIn = nextInputIdx++;
+    const trackAsset = assetsById.get(track.assetId);
+    const offsetSec = Math.max(0, track.startOffsetSec || 0);
     const clipDur = Math.max(
       0.2,
       Math.min(track.durationSec ?? remainingTotal, remainingTotal)
     );
+    const assetDur = trackAsset?.durationSec ?? 0;
+    const needsLoop =
+      track.kind === "bgm" && (assetDur <= 0.1 || assetDur - offsetSec < clipDur - 0.05);
 
-    if (track.kind === "bgm") {
-      inputArgs.push(
-        "-vn",
-        "-stream_loop",
-        "-1",
-        "-ss",
-        String(track.startOffsetSec || 0),
-        "-t",
-        String(clipDur),
-        "-i",
-        audioPath
-      );
+    if (needsLoop) {
+      inputArgs.push("-vn", "-stream_loop", "-1", "-i", audioPath);
     } else {
-      inputArgs.push(
-        "-vn",
-        "-ss",
-        String(track.startOffsetSec || 0),
-        "-t",
-        String(clipDur),
-        "-i",
-        audioPath
-      );
+      inputArgs.push("-vn", "-ss", String(offsetSec), "-t", String(clipDur), "-i", audioPath);
     }
 
     const fadeIn = Math.min(clipDur * 0.4, track.fadeInSec || 0);
@@ -444,7 +442,16 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
     const fadeOutStart = Math.max(0, clipDur - fadeOut);
     const delayMs = Math.max(0, Math.round((track.timelineStartSec || 0) * 1000));
 
-    const afOps: string[] = [`volume=${track.volume.toFixed(2)}`];
+    const afOps: string[] = [];
+    if (needsLoop) {
+      afOps.push(
+        `atrim=start=${offsetSec.toFixed(3)}:duration=${clipDur.toFixed(3)}`,
+        "asetpts=PTS-STARTPTS"
+      );
+    } else {
+      afOps.push("asetpts=PTS-STARTPTS", `atrim=0:${clipDur.toFixed(3)}`);
+    }
+    afOps.push(`volume=${track.volume.toFixed(2)}`);
     if (fadeIn > 0.02) afOps.push(`afade=t=in:st=0:d=${fadeIn.toFixed(2)}`);
     if (fadeOut > 0.02) afOps.push(`afade=t=out:st=${fadeOutStart.toFixed(2)}:d=${fadeOut.toFixed(2)}`);
     if (delayMs > 0) afOps.push(`adelay=${delayMs}|${delayMs}`);

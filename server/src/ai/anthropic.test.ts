@@ -120,6 +120,46 @@ describe("Anthropic Claude Sonnet 5.5 AI Director", () => {
         assetIds: ["clip-1"],
         audioAssetId: "beat-1",
         mode: "claude",
+        previousProject: {
+          id: "prev-1",
+          title: "Prev",
+          templateId: "hype-zoom",
+          promptUsed: "prev",
+          modeUsed: "claude",
+          aspectRatio: "9:16",
+          fps: 30,
+          targetDurationSec: 4,
+          clips: [
+            {
+              id: "slot-1",
+              assetId: "clip-1",
+              sourceStartSec: 0,
+              sourceEndSec: 2,
+              speed: 1,
+              motion: "none",
+              transitionIn: "cut",
+              transitionDurationSec: 0,
+              filter: "none",
+              muteOriginalAudio: true,
+              volume: 0,
+              reversed: false,
+            },
+          ],
+          overlays: [],
+          stickers: [
+            {
+              id: "stk-remix",
+              stickerId: "fire",
+              startSec: 0,
+              endSec: 2,
+              xNorm: 0.5,
+              yNorm: 0.3,
+              scale: 1,
+              rotationDeg: 0,
+            },
+          ],
+          audioTracks: [],
+        },
       },
       assetsById: mockAssets,
       filePathsById: new Map(),
@@ -134,5 +174,7 @@ describe("Anthropic Claude Sonnet 5.5 AI Director", () => {
     expect(result.project.modeUsed).toBe("claude");
     expect(result.project.clips[1].sourceEndSec).toBeLessThanOrEqual(5);
     expect(result.project.overlays[0]?.text).toBe("SIARGAO DROP");
+    expect(result.project.stickers.length).toBe(1);
+    expect(result.project.stickers[0]?.id).toBe("stk-remix");
   });
 });

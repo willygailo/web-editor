@@ -219,3 +219,19 @@ export function resolveAiAudioTracks(params: {
 
   return [freshBgm, ...prevExtras];
 }
+
+/**
+ * Preserves user-placed stickers and custom logo watermarks across AI Remix
+ * iterations unless the prompt explicitly asks to remove stickers.
+ */
+export function resolveAiStickers(params: {
+  previousProject?: CutProject;
+  prompt: string;
+}): CutProject["stickers"] {
+  const { previousProject, prompt } = params;
+  if (!previousProject?.stickers?.length) return [];
+  if (/(remove stickers|no stickers|walang stickers|clear stickers)/i.test(prompt)) {
+    return [];
+  }
+  return previousProject.stickers;
+}

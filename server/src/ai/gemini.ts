@@ -12,7 +12,7 @@ import {
   type MediaAsset,
 } from "@cutflow/shared";
 import { createGeminiVideoProxy } from "../media/probe.js";
-import { resolveAiAudioTracks, sanitizeCutProject } from "./sanitize.js";
+import { resolveAiAudioTracks, resolveAiStickers, sanitizeCutProject } from "./sanitize.js";
 
 const EDL_JSON_SCHEMA = {
   type: "object",
@@ -283,6 +283,10 @@ export async function generateGeminiCutProject(params: {
       previousProject: request.previousProject,
       chosenBgm: chosenAudio,
     });
+    const preservedStickers = resolveAiStickers({
+      previousProject: request.previousProject,
+      prompt: request.prompt,
+    });
 
     const draft: CutProjectInput = {
       id: request.previousProject?.id ?? crypto.randomUUID(),
@@ -302,6 +306,7 @@ export async function generateGeminiCutProject(params: {
         ...o,
         id: `txt-${idx + 1}`,
       })),
+      stickers: preservedStickers,
       audioTrack: resolvedTracks[0],
       audioTracks: resolvedTracks,
     };
