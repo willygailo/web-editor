@@ -28,6 +28,7 @@ sticker-*.svg
 
 # User media, voiceover recordings, subtitles & exported templates
 *.mp4
+!docs/demo.mp4
 *.mov
 *.m4v
 *.mkv

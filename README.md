@@ -21,12 +21,26 @@
   </p>
 
   <p>
+    <a href="#-demo">Demo</a> •
     <a href="#-features">Features</a> •
     <a href="#-how-to-use">How to Use</a> •
     <a href="#-cut-template-presets">Templates</a> •
     <a href="#-quick-start">Quick Start</a> •
     <a href="#-api-endpoints">API</a> •
     <a href="#-contributors">Contributors</a>
+  </p>
+</div>
+
+---
+
+## 🎬 Demo
+
+<div align="center">
+  <a href="./docs/demo.mp4">
+    <img src="./docs/demo.gif" alt="CutFlow AI Demo Preview" width="840" />
+  </a>
+  <p>
+    <a href="./docs/demo.mp4"><strong>Watch / Download Full Demo Video with Audio (MP4 • 2:10)</strong></a>
   </p>
 </div>
 
