@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build & TypeScript outputs
+dist/
+build/
+*.tsbuildinfo
+.vite/
+
+# Environment & Secrets (keep .env.example tracked)
+.env
+.env.*
+!.env.example
+
+# Runtime media storage, proxies, and rendered exports
+data/
+uploads/
+renders/
+*.mp4
+*.mov
+*.m4a
+*.wav
+*.ass
+
+# Tests & Coverage
+coverage/
+.vitest/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo

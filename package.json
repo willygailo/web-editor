@@ -1,0 +1,15 @@
+{
+  "name": "cutflow-ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @cutflow/shared build && pnpm --parallel --filter @cutflow/shared --filter @cutflow/server --filter @cutflow/web dev",
+    "build": "pnpm --filter @cutflow/shared build && pnpm --filter @cutflow/server build && pnpm --filter @cutflow/web build",
+    "test": "pnpm --filter @cutflow/shared test && pnpm --filter @cutflow/server test",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
