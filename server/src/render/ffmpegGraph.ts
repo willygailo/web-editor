@@ -360,6 +360,10 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
     currentVideoLabel = "vout";
   }
 
+  // Ensure standard TV-range yuv420p output format (cleanly converts JPEG yuvj420p / rgba overlays)
+  filterParts.push(`[${currentVideoLabel}]scale=out_range=tv,format=yuv420p[vfinal]`);
+  currentVideoLabel = "vfinal";
+
   // 5. Add multi-track audio (BGM, SFX, Voiceovers)
   const audioTracks = getProjectAudioTracks(project);
   audioTracks.forEach((track, idx) => {
@@ -377,6 +381,7 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
 
     if (track.kind === "bgm") {
       inputArgs.push(
+        "-vn",
         "-stream_loop",
         "-1",
         "-ss",
@@ -388,6 +393,7 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
       );
     } else {
       inputArgs.push(
+        "-vn",
         "-ss",
         String(track.startOffsetSec || 0),
         "-t",

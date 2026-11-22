@@ -156,3 +156,56 @@ export function sanitizeCutProject(
 
   return { project: parsed, warnings };
 }
+
+/**
+ * Preserves user-configured multi-track audio (BGM offsets/volumes, SFX, and
+ * voiceovers) across AI Remix iterations while cleanly switching BGM if requested.
+ */
+export function resolveAiAudioTracks(params: {
+  previousProject?: CutProject;
+  chosenBgm?: MediaAsset;
+  totalDurationSec?: number;
+}): AudioTrack[] {
+  const { previousProject, chosenBgm, totalDurationSec } = params;
+  const prevTracks = previousProject ? getProjectAudioTracks(previousProject) : [];
+  const prevBgm = prevTracks.find((t) => t.kind === "bgm");
+  const prevExtras = prevTracks.filter((t) => t.kind !== "bgm");
+
+  if (!chosenBgm) {
+    return prevTracks;
+  }
+
+  if (prevBgm && prevBgm.assetId === chosenBgm.id) {
+    const prevTotal = previousProject?.targetDurationSec;
+    const wasFullLength =
+      prevBgm.durationSec === undefined ||
+      (prevTotal !== undefined && Math.abs(prevBgm.durationSec - prevTotal) < 0.3);
+    return [
+      {
+        ...prevBgm,
+        durationSec: wasFullLength ? totalDurationSec : prevBgm.durationSec,
+        beatMarkersSec:
+          prevBgm.beatMarkersSec.length > 0
+            ? prevBgm.beatMarkersSec
+            : chosenBgm.beatMarkersSec,
+      },
+      ...prevExtras,
+    ];
+  }
+
+  const freshBgm: AudioTrack = {
+    id: "aud-bgm-1",
+    kind: "bgm",
+    assetId: chosenBgm.id,
+    title: chosenBgm.originalName,
+    timelineStartSec: 0,
+    durationSec: totalDurationSec,
+    startOffsetSec: 0,
+    volume: 0.85,
+    fadeInSec: 0.2,
+    fadeOutSec: 0.7,
+    beatMarkersSec: chosenBgm.beatMarkersSec,
+  };
+
+  return [freshBgm, ...prevExtras];
+}

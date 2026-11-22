@@ -10,7 +10,7 @@ import {
   type MediaAsset,
 } from "@cutflow/shared";
 import { runProcess } from "../media/exec.js";
-import { sanitizeCutProject } from "./sanitize.js";
+import { resolveAiAudioTracks, sanitizeCutProject } from "./sanitize.js";
 
 const workspaceCache = new Map<string, string>();
 
@@ -383,20 +383,10 @@ export async function generateAnthropicCutProject(params: {
     (parsed.audioAssetId ? assetsById.get(parsed.audioAssetId) : undefined) ??
     selectedAudio;
 
-  const audioTrackObj = chosenAudio
-    ? {
-        id: "aud-bgm-1",
-        kind: "bgm" as const,
-        assetId: chosenAudio.id,
-        title: chosenAudio.originalName,
-        timelineStartSec: 0,
-        startOffsetSec: 0,
-        volume: 0.85,
-        fadeInSec: 0.2,
-        fadeOutSec: 0.7,
-        beatMarkersSec: chosenAudio.beatMarkersSec,
-      }
-    : undefined;
+  const resolvedTracks = resolveAiAudioTracks({
+    previousProject: request.previousProject,
+    chosenBgm: chosenAudio,
+  });
 
   const draft: CutProjectInput = {
     id: request.previousProject?.id ?? crypto.randomUUID(),
@@ -416,8 +406,8 @@ export async function generateAnthropicCutProject(params: {
       ...o,
       id: `txt-${idx + 1}`,
     })),
-    audioTrack: audioTrackObj,
-    audioTracks: audioTrackObj ? [audioTrackObj] : [],
+    audioTrack: resolvedTracks[0],
+    audioTracks: resolvedTracks,
   };
 
   const sanitized = sanitizeCutProject(draft, assetsById);

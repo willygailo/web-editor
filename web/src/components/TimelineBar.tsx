@@ -511,21 +511,40 @@ export function TimelineBar({
                             : "border-rose-500/45 bg-rose-500/15"
                       }`}
                     >
-                      {/* Waveform background bars */}
-                      {peaks.length > 0 && (
-                        <div
-                          aria-hidden="true"
-                          className="pointer-events-none absolute inset-0 flex items-center gap-[1px] px-1 opacity-40"
-                        >
-                          {peaks.slice(0, 64).map((p, i) => (
-                            <span
-                              key={i}
-                              className="flex-1 rounded-full bg-rose-300"
-                              style={{ height: `${Math.max(15, Math.round(p * 90))}%` }}
-                            />
-                          ))}
-                        </div>
-                      )}
+                      {/* Waveform background bars (reflects active Song Start & Length slice) */}
+                      {peaks.length > 0 && (() => {
+                        const asset = assetsById.get(tr.assetId);
+                        const assetDur = Math.max(0.5, asset?.durationSec ?? dur);
+                        const offsetSec = tr.startOffsetSec || 0;
+                        const totalBins = peaks.length;
+                        const barCount = Math.min(48, Math.max(12, Math.round(dur * 5)));
+                        return (
+                          <div
+                            aria-hidden="true"
+                            className="pointer-events-none absolute inset-0 flex items-center gap-[1px] px-1 opacity-45"
+                          >
+                            {Array.from({ length: barCount }).map((_, i) => {
+                              const sampleT = offsetSec + (i / barCount) * dur;
+                              const normPos =
+                                tr.kind === "bgm"
+                                  ? (sampleT % assetDur) / assetDur
+                                  : Math.min(0.99, sampleT / assetDur);
+                              const binIdx = Math.min(
+                                totalBins - 1,
+                                Math.max(0, Math.floor(normPos * totalBins))
+                              );
+                              const p = peaks[binIdx] ?? 0.2;
+                              return (
+                                <span
+                                  key={i}
+                                  className="flex-1 rounded-full bg-rose-300"
+                                  style={{ height: `${Math.max(15, Math.round(p * 90))}%` }}
+                                />
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                       <span className="relative z-10 flex items-center gap-1 truncate text-[10px] font-bold text-rose-100">
                         <Music2 className="size-3 shrink-0" aria-hidden="true" />
                         <span className="truncate">{tr.title || tr.kind}</span>

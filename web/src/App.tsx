@@ -64,6 +64,7 @@ export function App() {
 
   const [mobilePanel, setMobilePanel] = useState<ToolPanel | null>("ai");
   const [desktopLeftTab, setDesktopLeftTab] = useState<"clips" | "audio" | "templates">("clips");
+  const [pendingAudioId, setPendingAudioId] = useState<string | null>(null);
 
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isLoadingDemo, setIsLoadingDemo] = useState(false);
@@ -181,14 +182,20 @@ export function App() {
       const addedVisuals = added.filter((a) => a.kind !== "audio").map((a) => a.id);
       if (addedVisuals.length > 0) {
         setSelectedVisualIds((prev) => Array.from(new Set([...prev, ...addedVisuals])));
-      } else if (!autoAudioKind && added.some((a) => a.kind === "audio")) {
-        setDesktopLeftTab("audio");
-        setMobilePanel("audio");
       }
-      if (autoAudioKind) {
-        const audio = added.find((a) => a.kind === "audio");
-        if (audio && project) {
-          store.addAudioTrack(audio, autoAudioKind, currentTime);
+      const uploadedAudios = added.filter((a) => a.kind === "audio");
+      const lastAudio = uploadedAudios[uploadedAudios.length - 1];
+      if (lastAudio) {
+        const targetKind =
+          autoAudioKind ?? (lastAudio.audioCategory === "sfx" ? "sfx" : "bgm");
+        if (project) {
+          store.addAudioTrack(lastAudio, targetKind, currentTime);
+        } else {
+          setPendingAudioId(lastAudio.id);
+        }
+        if (addedVisuals.length === 0 && !autoAudioKind) {
+          setDesktopLeftTab("audio");
+          setMobilePanel("audio");
         }
       }
     } catch (err) {
@@ -223,6 +230,7 @@ export function App() {
       await deleteMedia(id);
       setAssets((prev) => prev.filter((a) => a.id !== id));
       setSelectedVisualIds((prev) => prev.filter((vid) => vid !== id));
+      setPendingAudioId((curr) => (curr === id ? null : curr));
     } catch (err) {
       setBannerError(err instanceof Error ? err.message : "Delete failed");
     }
@@ -260,7 +268,7 @@ export function App() {
         {
           prompt: activePrompt,
           assetIds: selectedVisualIds,
-          audioAssetId: project?.audioTracks?.[0]?.assetId,
+          audioAssetId: project?.audioTracks?.[0]?.assetId ?? pendingAudioId ?? undefined,
           templateId: templateOverride?.id,
           aspectRatio: templateOverride?.defaultAspectRatio ?? project?.aspectRatio,
           targetDurationSec: templateOverride?.defaultDurationSec,
@@ -291,6 +299,8 @@ export function App() {
       setAssets((prev) => [...prev, audioAsset]);
       if (project) {
         store.addAudioTrack(audioAsset, "bgm", 0);
+      } else {
+        setPendingAudioId(audioAsset.id);
       }
     } catch (err) {
       setBannerError(err instanceof Error ? err.message : "Failed extracting audio");
@@ -324,6 +334,24 @@ export function App() {
   const handleTimeChange = useCallback((t: number) => {
     setCurrentTime(t);
   }, []);
+
+  const audioDrawerProps = {
+    project,
+    assets,
+    selectedAudioTrackId: selection.audioTrackId,
+    pendingAudioId,
+    currentTime,
+    onSelectAudioTrack: store.selectAudioTrack,
+    onSelectPendingAudio: (id: string) => setPendingAudioId(id),
+    onAddAudioTrack: store.addAudioTrack,
+    onUpdateAudioTrack: store.updateAudioTrack,
+    onDeleteAudioTrack: store.deleteAudioTrack,
+    onUploadAudio: (files: File[], kind?: AudioCategory) => handleUploadFiles(files, kind),
+    onExtractAudio: handleExtractAudio,
+    onSnapCutsToBeats: () => store.snapCutsToBeats(assetsById),
+    onBeginSlider: store.beginGesture,
+    onEndSlider: store.endGesture,
+  };
 
   // Determine mobile inspector sub-section when a mobile tool button is active
   const mobileInspectorSection: InspectorSection | undefined =
@@ -498,7 +526,12 @@ export function App() {
                   prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
                 )
               }
-              onAppendToTimeline={(asset) => store.appendVisualAsset(asset)}
+              onAppendToTimeline={(asset) =>
+                store.appendVisualAsset(
+                  asset,
+                  pendingAudioId ? assetsById.get(pendingAudioId) : undefined
+                )
+              }
               onUploadFiles={(files) => void handleUploadFiles(files)}
               onLoadSamplePack={() => void handleLoadDemo()}
               onDeleteAsset={(id) => void handleDeleteAsset(id)}
@@ -507,23 +540,7 @@ export function App() {
             />
           )}
 
-          {desktopLeftTab === "audio" && (
-            <AudioDrawer
-              project={project}
-              assets={assets}
-              selectedAudioTrackId={selection.audioTrackId}
-              currentTime={currentTime}
-              onSelectAudioTrack={store.selectAudioTrack}
-              onAddAudioTrack={store.addAudioTrack}
-              onUpdateAudioTrack={store.updateAudioTrack}
-              onDeleteAudioTrack={store.deleteAudioTrack}
-              onUploadAudio={(files, kind) => handleUploadFiles(files, kind)}
-              onExtractAudio={handleExtractAudio}
-              onSnapCutsToBeats={() => store.snapCutsToBeats(assetsById)}
-              onBeginSlider={store.beginGesture}
-              onEndSlider={store.endGesture}
-            />
-          )}
+          {desktopLeftTab === "audio" && <AudioDrawer {...audioDrawerProps} />}
 
           {desktopLeftTab === "templates" && (
             <TemplateDrawer
@@ -601,21 +618,7 @@ export function App() {
         {/* Desktop Right Contextual Inspector */}
         <aside className="hidden overflow-y-auto rounded-2xl border border-slate-800/80 bg-[#111520] p-3 lg:block lg:max-h-[calc(100dvh-19rem)]">
           {selection.audioTrackId && project ? (
-            <AudioDrawer
-              project={project}
-              assets={assets}
-              selectedAudioTrackId={selection.audioTrackId}
-              currentTime={currentTime}
-              onSelectAudioTrack={store.selectAudioTrack}
-              onAddAudioTrack={store.addAudioTrack}
-              onUpdateAudioTrack={store.updateAudioTrack}
-              onDeleteAudioTrack={store.deleteAudioTrack}
-              onUploadAudio={(files, kind) => handleUploadFiles(files, kind)}
-              onExtractAudio={handleExtractAudio}
-              onSnapCutsToBeats={() => store.snapCutsToBeats(assetsById)}
-              onBeginSlider={store.beginGesture}
-              onEndSlider={store.endGesture}
-            />
+            <AudioDrawer {...audioDrawerProps} />
           ) : (
             <SlotInspector
               project={project}
@@ -750,7 +753,12 @@ export function App() {
                       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
                     )
                   }
-                  onAppendToTimeline={(asset) => store.appendVisualAsset(asset)}
+                  onAppendToTimeline={(asset) =>
+                    store.appendVisualAsset(
+                      asset,
+                      pendingAudioId ? assetsById.get(pendingAudioId) : undefined
+                    )
+                  }
                   onUploadFiles={(files) => void handleUploadFiles(files)}
                   onLoadSamplePack={() => void handleLoadDemo()}
                   onDeleteAsset={(id) => void handleDeleteAsset(id)}
@@ -759,23 +767,7 @@ export function App() {
                 />
               )}
 
-              {mobilePanel === "audio" && (
-                <AudioDrawer
-                  project={project}
-                  assets={assets}
-                  selectedAudioTrackId={selection.audioTrackId}
-                  currentTime={currentTime}
-                  onSelectAudioTrack={store.selectAudioTrack}
-                  onAddAudioTrack={store.addAudioTrack}
-                  onUpdateAudioTrack={store.updateAudioTrack}
-                  onDeleteAudioTrack={store.deleteAudioTrack}
-                  onUploadAudio={(files, kind) => handleUploadFiles(files, kind)}
-                  onExtractAudio={handleExtractAudio}
-                  onSnapCutsToBeats={() => store.snapCutsToBeats(assetsById)}
-                  onBeginSlider={store.beginGesture}
-                  onEndSlider={store.endGesture}
-                />
-              )}
+              {mobilePanel === "audio" && <AudioDrawer {...audioDrawerProps} />}
 
               {mobilePanel === "templates" && (
                 <TemplateDrawer
@@ -831,7 +823,7 @@ export function App() {
         open={Boolean(templateModalTarget)}
         template={templateModalTarget}
         assets={assets}
-        selectedAudioId={project?.audioTracks?.[0]?.assetId}
+        selectedAudioId={project?.audioTracks?.[0]?.assetId ?? pendingAudioId ?? undefined}
         onClose={() => setTemplateModalTarget(null)}
         onApplyProject={(built) => {
           store.loadProject(built);
@@ -844,6 +836,10 @@ export function App() {
         open={exportOpen}
         onClose={() => setExportOpen(false)}
         project={project}
+        onOpenAudioDrawer={() => {
+          setDesktopLeftTab("audio");
+          setMobilePanel("audio");
+        }}
       />
 
       <SettingsModal

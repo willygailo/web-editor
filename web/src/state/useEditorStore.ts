@@ -357,8 +357,37 @@ export function useEditorStore() {
     [commit]
   );
 
+function computeDefaultStartOffset(asset: MediaAsset): number {
+  const firstSilence = asset.silenceRanges[0];
+  if (
+    firstSilence &&
+    firstSilence.startSec <= 0.15 &&
+    firstSilence.endSec >= 1.2 &&
+    firstSilence.endSec < asset.durationSec - 1
+  ) {
+    return Number(firstSilence.endSec.toFixed(2));
+  }
+  return 0;
+}
+
+function buildBgmTrack(asset: MediaAsset, totalDurSec: number): AudioTrack {
+  return {
+    id: `aud-${Date.now().toString(36)}`,
+    kind: "bgm",
+    assetId: asset.id,
+    title: asset.originalName,
+    timelineStartSec: 0,
+    durationSec: Number(totalDurSec.toFixed(2)),
+    startOffsetSec: computeDefaultStartOffset(asset),
+    volume: 0.85,
+    fadeInSec: 0.25,
+    fadeOutSec: 0.7,
+    beatMarkersSec: asset.beatMarkersSec,
+  };
+}
+
   const appendVisualAsset = useCallback(
-    (asset: MediaAsset) => {
+    (asset: MediaAsset, pendingAudio?: MediaAsset) => {
       const newId = `slot-${Date.now().toString(36)}`;
       const newSlot: ClipSlot = {
         id: newId,
@@ -376,6 +405,10 @@ export function useEditorStore() {
         label: asset.originalName,
       };
       if (!presentRef.current) {
+        const initialTracks =
+          pendingAudio && pendingAudio.kind === "audio"
+            ? [buildBgmTrack(pendingAudio, newSlot.sourceEndSec)]
+            : [];
         loadProject({
           id: crypto.randomUUID(),
           title: asset.originalName,
@@ -389,7 +422,8 @@ export function useEditorStore() {
           clips: [newSlot],
           overlays: [],
           stickers: [],
-          audioTracks: [],
+          audioTrack: initialTracks[0],
+          audioTracks: initialTracks,
         });
       } else {
         commit((prev) => ({
@@ -421,7 +455,7 @@ export function useEditorStore() {
           title: asset.originalName,
           timelineStartSec: Number(start.toFixed(2)),
           durationSec: Number(dur.toFixed(2)),
-          startOffsetSec: 0,
+          startOffsetSec: kind === "bgm" ? computeDefaultStartOffset(asset) : 0,
           volume: kind === "bgm" ? 0.85 : 1.0,
           fadeInSec: kind === "bgm" ? 0.25 : 0.04,
           fadeOutSec: kind === "bgm" ? 0.7 : 0.1,

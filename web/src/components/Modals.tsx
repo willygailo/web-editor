@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, Download, Share2, X } from "lucide-react";
-import type { CutProject, HealthResponse, RenderJob } from "@cutflow/shared";
+import { AlertTriangle, CheckCircle2, Download, Music2, Share2, X } from "lucide-react";
+import {
+  getProjectAudioTracks,
+  type CutProject,
+  type HealthResponse,
+  type RenderJob,
+} from "@cutflow/shared";
 import { startRender, subscribeRenderEvents } from "../api/client";
 import { useDialogModal } from "../hooks/useDialogModal";
 
@@ -8,9 +13,10 @@ interface ExportModalProps {
   open: boolean;
   onClose: () => void;
   project: CutProject | null;
+  onOpenAudioDrawer?: () => void;
 }
 
-export function ExportModal({ open, onClose, project }: ExportModalProps) {
+export function ExportModal({ open, onClose, project, onOpenAudioDrawer }: ExportModalProps) {
   const dialogRef = useDialogModal(open, onClose);
   const [quality, setQuality] = useState<"720p" | "1080p">("1080p");
   const [job, setJob] = useState<RenderJob | null>(null);
@@ -138,16 +144,53 @@ export function ExportModal({ open, onClose, project }: ExportModalProps) {
 
       {!project ? (
         <p className="text-sm text-slate-400">Create an edit or apply a template first before exporting.</p>
-      ) : (
+      ) : (() => {
+        const tracks = getProjectAudioTracks(project);
+        const mainBgm = tracks.find((t) => t.kind === "bgm") ?? tracks[0];
+        return (
         <div className="flex flex-col gap-4">
-          <div className="rounded-xl border border-slate-800 bg-[#090b10] p-3 text-xs text-slate-300">
+          <div className="rounded-xl border border-slate-800 bg-[#090b10] p-3 text-xs text-slate-300 space-y-1">
             <div>
               <strong>Project:</strong> {project.title}
             </div>
             <div>
-              <strong>Format:</strong> {project.aspectRatio} · {project.clips.length} clips
+              <strong>Format:</strong> {project.aspectRatio} · {project.clips.length} clips ·{" "}
+              {project.targetDurationSec.toFixed(1)}s
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Music2 className="size-3.5 shrink-0 text-rose-400" aria-hidden="true" />
+              {tracks.length > 0 ? (
+                <span className="truncate text-slate-200">
+                  <strong>Audio ({tracks.length}):</strong>{" "}
+                  {tracks.map((t) => t.title || t.kind).join(" + ")}
+                  {mainBgm && ` · starts @ ${mainBgm.startOffsetSec.toFixed(1)}s (${Math.round(mainBgm.volume * 100)}%)`}
+                </span>
+              ) : (
+                <span className="text-amber-300">No background music attached to timeline</span>
+              )}
             </div>
           </div>
+
+          {tracks.length === 0 && (
+            <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              <span className="inline-flex items-center gap-1.5">
+                <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+                <span>No music track added yet.</span>
+              </span>
+              {onOpenAudioDrawer && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    dialogRef.current?.close();
+                    onOpenAudioDrawer();
+                  }}
+                  className="shrink-0 rounded-lg bg-amber-400 px-2.5 py-1 text-[11px] font-bold text-slate-950"
+                >
+                  Add Music
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="flex gap-2">
             {(["720p", "1080p"] as const).map((q) => (
@@ -194,11 +237,18 @@ export function ExportModal({ open, onClose, project }: ExportModalProps) {
           )}
 
           {job?.status === "completed" && job.outputUrl ? (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2.5">
               <div className="flex items-center gap-2 text-xs font-semibold text-emerald-300">
                 <CheckCircle2 className="size-4" aria-hidden="true" />
-                <span>Rendered cleanly via FFmpeg!</span>
+                <span>Rendered cleanly via FFmpeg! Preview below:</span>
               </div>
+              <video
+                src={job.outputUrl}
+                controls
+                playsInline
+                preload="metadata"
+                className="max-h-56 w-full rounded-xl border border-slate-800 bg-black"
+              />
               <div className="flex gap-2">
                 <a
                   href={job.outputUrl}
@@ -231,7 +281,8 @@ export function ExportModal({ open, onClose, project }: ExportModalProps) {
             </button>
           )}
         </div>
-      )}
+        );
+      })()}
     </dialog>
   );
 }

@@ -4,6 +4,8 @@ import {
   Film,
   Mic,
   Music2,
+  Pause,
+  Play,
   Plus,
   Sparkles,
   Square,
@@ -23,8 +25,10 @@ interface AudioDrawerProps {
   project: CutProject | null;
   assets: MediaAsset[];
   selectedAudioTrackId: string | null;
+  pendingAudioId?: string | null;
   currentTime: number;
   onSelectAudioTrack: (id: string | null) => void;
+  onSelectPendingAudio?: (id: string) => void;
   onAddAudioTrack: (asset: MediaAsset, kind: AudioCategory, startSec: number) => void;
   onUpdateAudioTrack: (id: string, patch: Partial<AudioTrack>, recordHistory?: boolean) => void;
   onDeleteAudioTrack: (id: string) => void;
@@ -39,8 +43,10 @@ export function AudioDrawer({
   project,
   assets,
   selectedAudioTrackId,
+  pendingAudioId,
   currentTime,
   onSelectAudioTrack,
+  onSelectPendingAudio,
   onAddAudioTrack,
   onUpdateAudioTrack,
   onDeleteAudioTrack,
@@ -55,14 +61,41 @@ export function AudioDrawer({
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const timerRef = useRef<number | null>(null);
+  const auditionRef = useRef<HTMLAudioElement | null>(null);
 
   const [isRecording, setIsRecording] = useState(false);
   const [recordSec, setRecordSec] = useState(0);
   const [extractingId, setExtractingId] = useState<string | null>(null);
   const [recError, setRecError] = useState<string | null>(null);
+  const [auditionKey, setAuditionKey] = useState<string | null>(null);
+
+  const stopAudition = () => {
+    if (auditionRef.current) {
+      auditionRef.current.pause();
+      auditionRef.current.removeAttribute("src");
+      auditionRef.current = null;
+    }
+    setAuditionKey(null);
+  };
+
+  const toggleAudition = (key: string, url: string, startSec = 0, volume = 1) => {
+    if (auditionKey === key && auditionRef.current) {
+      stopAudition();
+      return;
+    }
+    stopAudition();
+    const audio = new Audio(url);
+    audio.volume = Math.min(1, Math.max(0.05, volume));
+    audio.currentTime = Math.max(0, startSec);
+    audio.onended = () => setAuditionKey(null);
+    auditionRef.current = audio;
+    setAuditionKey(key);
+    void audio.play().catch(() => setAuditionKey(null));
+  };
 
   useEffect(() => {
     return () => {
+      stopAudition();
       if (timerRef.current) window.clearInterval(timerRef.current);
       if (recorderRef.current && recorderRef.current.state !== "inactive") {
         recorderRef.current.stop();
@@ -86,6 +119,8 @@ export function AudioDrawer({
     0,
     Number((((selectedTrackAsset?.durationSec ?? 20) - 0.3)).toFixed(1))
   );
+  const firstDropSec =
+    selectedTrackAsset?.energyPeaksSec[0] ?? selectedTrackAsset?.beatMarkersSec[0] ?? 0;
 
   const startVoiceover = async () => {
     setRecError(null);
@@ -220,15 +255,70 @@ export function AudioDrawer({
                 {selectedTrack.kind}
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => onDeleteAudioTrack(selectedTrack.id)}
-              aria-label="Remove audio track"
-              className="rounded-lg p-1 text-rose-300 hover:bg-rose-500/15"
-            >
-              <Trash2 className="size-3.5" aria-hidden="true" />
-            </button>
+            <div className="flex items-center gap-1">
+              {selectedTrackAsset && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    toggleAudition(
+                      `track-${selectedTrack.id}`,
+                      selectedTrackAsset.url,
+                      selectedTrack.startOffsetSec,
+                      selectedTrack.volume
+                    )
+                  }
+                  aria-label="Listen from Song Start"
+                  title="Listen from current Song Start"
+                  className="inline-flex items-center gap-1 rounded-lg border border-cyan-500/40 bg-cyan-500/15 px-2 py-1 text-[10px] font-bold text-cyan-200 hover:bg-cyan-500/25"
+                >
+                  {auditionKey === `track-${selectedTrack.id}` ? (
+                    <>
+                      <Pause className="size-3" aria-hidden="true" />
+                      <span>Stop</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play className="size-3" aria-hidden="true" />
+                      <span>Listen</span>
+                    </>
+                  )}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => onDeleteAudioTrack(selectedTrack.id)}
+                aria-label="Remove audio track"
+                className="rounded-lg p-1 text-rose-300 hover:bg-rose-500/15"
+              >
+                <Trash2 className="size-3.5" aria-hidden="true" />
+              </button>
+            </div>
           </div>
+
+          {selectedTrack.kind === "bgm" &&
+            selectedTrackAsset &&
+            firstDropSec >= 2.0 &&
+            selectedTrack.startOffsetSec < firstDropSec - 0.8 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const target = Number(Math.min(maxStartOffset, firstDropSec).toFixed(1));
+                  onUpdateAudioTrack(selectedTrack.id, { startOffsetSec: target });
+                  toggleAudition(
+                    `track-${selectedTrack.id}`,
+                    selectedTrackAsset.url,
+                    target,
+                    selectedTrack.volume
+                  );
+                }}
+                className="flex items-center justify-between gap-2 rounded-xl border border-amber-400/50 bg-amber-500/15 px-2.5 py-1.5 text-[11px] font-semibold text-amber-200 hover:bg-amber-500/25"
+              >
+                <span className="truncate">Quiet intro detected · Beat starts @ {firstDropSec.toFixed(1)}s</span>
+                <span className="shrink-0 rounded-md bg-amber-400 px-2 py-0.5 text-[10px] font-bold text-slate-950">
+                  Skip Intro →
+                </span>
+              </button>
+            )}
 
           <label className="flex flex-col gap-0.5 text-[11px] text-slate-300">
             <span>Volume ({Math.round(selectedTrack.volume * 100)}%)</span>
@@ -424,27 +514,55 @@ export function AudioDrawer({
           <span>Music Library</span>
         </div>
         <div className="flex flex-col gap-1.5">
-          {bgmAssets.map((audio) => (
-            <div
-              key={audio.id}
-              className="flex items-center justify-between gap-2 rounded-xl border border-slate-800 bg-[#090b10] px-2.5 py-1.5"
-            >
-              <div className="min-w-0">
-                <div className="truncate font-medium text-slate-200">{audio.originalName}</div>
-                <div className="text-[10px] text-slate-400">
-                  {audio.beatMarkersSec.length} beats · {audio.durationSec.toFixed(1)}s
-                </div>
-              </div>
-              <button
-                type="button"
-                disabled={!project}
-                onClick={() => onAddAudioTrack(audio, "bgm", 0)}
-                className="shrink-0 rounded-lg bg-rose-500/20 px-2.5 py-1 text-[11px] font-bold text-rose-200 hover:bg-rose-500/30 disabled:opacity-40"
+          {bgmAssets.map((audio) => {
+            const isOnTimeline = activeTracks.some((t) => t.assetId === audio.id);
+            const isPending = !project && pendingAudioId === audio.id;
+            const dropPreview = audio.energyPeaksSec[0] ?? audio.beatMarkersSec[0] ?? 0;
+            return (
+              <div
+                key={audio.id}
+                className={`flex items-center justify-between gap-2 rounded-xl border px-2.5 py-1.5 ${
+                  isOnTimeline || isPending
+                    ? "border-rose-400/60 bg-rose-500/10"
+                    : "border-slate-800 bg-[#090b10]"
+                }`}
               >
-                Use BGM
-              </button>
-            </div>
-          ))}
+                <button
+                  type="button"
+                  onClick={() => toggleAudition(`lib-${audio.id}`, audio.url, 0, 0.9)}
+                  aria-label={`Preview ${audio.originalName}`}
+                  className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-[#111520] text-slate-200 hover:border-cyan-400"
+                >
+                  {auditionKey === `lib-${audio.id}` ? (
+                    <Pause className="size-3.5 text-cyan-300" aria-hidden="true" />
+                  ) : (
+                    <Play className="size-3.5" aria-hidden="true" />
+                  )}
+                </button>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium text-slate-200">{audio.originalName}</div>
+                  <div className="text-[10px] text-slate-400">
+                    {audio.beatMarkersSec.length} beats · {audio.durationSec.toFixed(1)}s
+                    {dropPreview >= 3 ? ` · drop @ ${dropPreview.toFixed(1)}s` : ""}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    stopAudition();
+                    if (project) {
+                      onAddAudioTrack(audio, "bgm", 0);
+                    } else {
+                      onSelectPendingAudio?.(audio.id);
+                    }
+                  }}
+                  className="shrink-0 rounded-lg bg-rose-500/20 px-2.5 py-1 text-[11px] font-bold text-rose-200 hover:bg-rose-500/30"
+                >
+                  {isOnTimeline ? "Active" : isPending ? "Selected ✓" : project ? "Use BGM" : "Pick Song"}
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
 

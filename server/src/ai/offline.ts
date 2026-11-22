@@ -13,7 +13,7 @@ import {
   type MediaAsset,
   type TextOverlay,
 } from "@cutflow/shared";
-import { sanitizeCutProject } from "./sanitize.js";
+import { resolveAiAudioTracks, sanitizeCutProject } from "./sanitize.js";
 
 function pickTemplateFromPrompt(
   prompt: string,
@@ -148,9 +148,9 @@ function pickDefaultAudio(
   );
   if (audios.length === 0) return undefined;
 
-  // Prefer user-uploaded audio first if they uploaded one
-  const userAudio = audios.find((a) => !a.isBuiltIn);
-  if (userAudio) return userAudio;
+  // Prefer the most recently uploaded user audio track first
+  const userAudios = audios.filter((a) => !a.isBuiltIn);
+  if (userAudios.length > 0) return userAudios[userAudios.length - 1];
 
   if (preset.id === "chill-vlog" || preset.id === "cinematic-story") {
     return audios.find((a) => a.id.includes("chill")) ?? audios[0];
@@ -214,8 +214,19 @@ export function generateOfflineCutProject(
       audioAsset,
       projectId: prev?.id ?? crypto.randomUUID(),
     });
+    const mergedTracks = resolveAiAudioTracks({
+      previousProject: prev,
+      chosenBgm: audioAsset,
+      totalDurationSec: built.targetDurationSec,
+    });
     return sanitizeCutProject(
-      { ...built, promptUsed: request.prompt, modeUsed: "offline" },
+      {
+        ...built,
+        promptUsed: request.prompt,
+        modeUsed: "offline",
+        audioTrack: mergedTracks[0],
+        audioTracks: mergedTracks,
+      },
       assetsById
     );
   }
@@ -312,21 +323,11 @@ export function generateOfflineCutProject(
     });
   }
 
-  const audioTrackObj = audioAsset
-    ? {
-        id: "aud-bgm-1",
-        kind: "bgm" as const,
-        assetId: audioAsset.id,
-        title: audioAsset.originalName,
-        timelineStartSec: 0,
-        durationSec: layout.totalDurationSec,
-        startOffsetSec: 0,
-        volume: 0.85,
-        fadeInSec: 0.2,
-        fadeOutSec: 0.7,
-        beatMarkersSec: audioAsset.beatMarkersSec,
-      }
-    : undefined;
+  const mergedTracks = resolveAiAudioTracks({
+    previousProject: prev,
+    chosenBgm: audioAsset,
+    totalDurationSec: layout.totalDurationSec,
+  });
 
   const draft: CutProjectInput = {
     id: prev?.id ?? crypto.randomUUID(),
@@ -341,8 +342,8 @@ export function generateOfflineCutProject(
     clips,
     overlays,
     stickers: [],
-    audioTrack: audioTrackObj,
-    audioTracks: audioTrackObj ? [audioTrackObj] : [],
+    audioTrack: mergedTracks[0],
+    audioTracks: mergedTracks,
   };
 
   return sanitizeCutProject(draft, assetsById);

@@ -480,4 +480,179 @@ describe("Offline AI Director & FFmpeg Render Pipeline", () => {
     expect(outProbe.height).toBe(1280);
     expect(outProbe.hasAudio).toBe(true);
   }, 60_000);
+
+  it("preserves BGM offsets, SFX, and voiceovers on Remix and renders audible audio after skipping quiet intro", async () => {
+    const imgPath = path.join(tempRoot, "cover-photo.jpg");
+    const songPath = path.join(tempRoot, "quiet-intro.m4a");
+    const sfxPath = path.join(tempRoot, "whoosh.wav");
+    const outPath = path.join(tempRoot, "bgm-offset-output.mp4");
+
+    const genImg = await runProcess("ffmpeg", [
+      "-y", "-f", "lavfi", "-i", "color=c=navy:s=800x800:d=1",
+      "-frames:v", "1", imgPath,
+    ]);
+    // First 2.0s silent, seconds 2.0..6.0 loud 440Hz sine
+    const genSong = await runProcess("ffmpeg", [
+      "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=6",
+      "-af", "volume=enable='lt(t,2.0)':volume=0",
+      "-c:a", "aac", songPath,
+    ]);
+    const genSfx = await runProcess("ffmpeg", [
+      "-y", "-f", "lavfi", "-i", "sine=frequency=880:duration=0.6",
+      "-c:a", "pcm_s16le", sfxPath,
+    ]);
+    expect(genImg.code).toBe(0);
+    expect(genSong.code).toBe(0);
+    expect(genSfx.code).toBe(0);
+
+    const assets: MediaAsset[] = [
+      {
+        id: "img-a",
+        filename: "cover-photo.jpg",
+        originalName: "Photo A",
+        kind: "image",
+        mimeType: "image/jpeg",
+        url: "/api/media/img-a/stream",
+        durationSec: 6,
+        width: 800,
+        height: 800,
+        hasAudio: false,
+        beatMarkersSec: [],
+        energyPeaksSec: [],
+        silenceRanges: [],
+        isBuiltIn: false,
+      },
+      {
+        id: "song-intro",
+        filename: "quiet-intro.m4a",
+        originalName: "My Song.m4a",
+        kind: "audio",
+        audioCategory: "bgm",
+        mimeType: "audio/mp4",
+        url: "/api/media/song-intro/stream",
+        durationSec: 6,
+        hasAudio: true,
+        beatMarkersSec: [2.1, 2.6, 3.1],
+        energyPeaksSec: [2.1, 2.6],
+        silenceRanges: [{ startSec: 0, endSec: 2.0 }],
+        isBuiltIn: false,
+      },
+      {
+        id: "sfx-whoosh",
+        filename: "whoosh.wav",
+        originalName: "Whoosh",
+        kind: "audio",
+        audioCategory: "sfx",
+        mimeType: "audio/wav",
+        url: "/api/media/sfx-whoosh/stream",
+        durationSec: 0.6,
+        hasAudio: true,
+        beatMarkersSec: [],
+        energyPeaksSec: [],
+        silenceRanges: [],
+        isBuiltIn: true,
+      },
+    ];
+
+    const assetsById = new Map(assets.map((a) => [a.id, a]));
+    const filePathsById = new Map([
+      ["img-a", imgPath],
+      ["song-intro", songPath],
+      ["sfx-whoosh", sfxPath],
+    ]);
+
+    const prevProject = CutProjectSchema.parse({
+      id: "proj-remix",
+      title: "Prev Edit",
+      templateId: "hype-zoom",
+      promptUsed: "initial",
+      modeUsed: "offline",
+      aspectRatio: "1:1",
+      fps: 30,
+      targetDurationSec: 3.5,
+      clips: [
+        {
+          id: "slot-1",
+          assetId: "img-a",
+          sourceStartSec: 0,
+          sourceEndSec: 3.5,
+          speed: 1,
+          motion: "zoom-in",
+          transitionIn: "cut",
+          transitionDurationSec: 0,
+          filter: "none",
+          muteOriginalAudio: true,
+          volume: 0,
+        },
+      ],
+      overlays: [],
+      audioTracks: [
+        {
+          id: "aud-bgm-custom",
+          kind: "bgm",
+          assetId: "song-intro",
+          title: "My Song.m4a",
+          timelineStartSec: 0,
+          durationSec: 3.5,
+          startOffsetSec: 2.2,
+          volume: 1.2,
+          fadeInSec: 0.1,
+          fadeOutSec: 0.2,
+          beatMarkersSec: [2.1, 2.6],
+        },
+        {
+          id: "aud-sfx-1",
+          kind: "sfx",
+          assetId: "sfx-whoosh",
+          title: "Whoosh",
+          timelineStartSec: 0.5,
+          durationSec: 0.6,
+          startOffsetSec: 0,
+          volume: 1.0,
+          fadeInSec: 0.02,
+          fadeOutSec: 0.05,
+          beatMarkersSec: [],
+        },
+      ],
+    });
+
+    const remixed = generateOfflineCutProject(
+      {
+        prompt: "Make it 4s faster",
+        assetIds: ["img-a"],
+        audioAssetId: "song-intro",
+        mode: "offline",
+        previousProject: prevProject,
+      },
+      assetsById
+    );
+
+    expect(remixed.project.audioTracks.length).toBe(2);
+    expect(remixed.project.audioTracks[0]?.startOffsetSec).toBe(2.2);
+    expect(remixed.project.audioTracks[0]?.volume).toBe(1.2);
+    expect(remixed.project.audioTracks[1]?.kind).toBe("sfx");
+
+    const plan = buildFfmpegRenderPlan({
+      project: remixed.project,
+      quality: "720p",
+      assetsById,
+      filePathsById,
+      outputPath: outPath,
+    });
+
+    const renderRes = await runProcess("ffmpeg", plan.args, { timeoutMs: 60_000 });
+    expect(renderRes.code, renderRes.stderr).toBe(0);
+
+    const volRes = await runProcess("ffmpeg", [
+      "-i", outPath, "-af", "volumedetect", "-vn", "-f", "null", "-",
+    ]);
+    const meanMatch = /mean_volume:\s*([-\d.]+)\s*dB/.exec(volRes.stderr);
+    expect(meanMatch).not.toBeNull();
+    expect(Number(meanMatch?.[1])).toBeGreaterThan(-25);
+
+    const probe = await runProcess("ffprobe", [
+      "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=pix_fmt", "-of", "default=nk=1:nw=1", outPath,
+    ]);
+    expect(probe.stdout.trim()).toBe("yuv420p");
+  }, 60_000);
 });
