@@ -233,4 +233,53 @@ describe("computeTimelineLayout", () => {
     expect(withV3.stickers[0]?.assetId).toBe("logo-1");
     expect(withV3.audioTracks[0]?.duckUnderVoice).toBe(true);
   });
+
+  it("supports 4:5 Instagram Feed dimensions and pro social templates", () => {
+    expect(getAspectDimensions("4:5", "1080p")).toEqual({ width: 1080, height: 1350 });
+    expect(getAspectDimensions("4:5", "720p")).toEqual({ width: 720, height: 900 });
+
+    const ids = CUT_TEMPLATE_PRESETS.map((t) => t.id);
+    expect(ids).toContain("tiktok-viral-hook");
+    expect(ids).toContain("ig-feed-aesthetic");
+    expect(ids).toContain("yt-shorts-explainer");
+
+    const assetsById = new Map([
+      [
+        "clip-ig",
+        {
+          id: "clip-ig",
+          filename: "ig.mp4",
+          originalName: "IG Clip",
+          kind: "video" as const,
+          mimeType: "video/mp4",
+          url: "/api/media/clip-ig/stream",
+          durationSec: 8,
+          hasAudio: false,
+          beatMarkersSec: [],
+          visualHighlightsSec: [0.5, 2.5, 5.0],
+          energyPeaksSec: [],
+          silenceRanges: [],
+          isBuiltIn: false,
+        },
+      ],
+    ]);
+
+    const igProj = buildProjectFromTemplate({
+      template: getTemplatePresetById("ig-feed-aesthetic"),
+      slotAssetIds: ["clip-ig"],
+      assetsById,
+      projectId: "proj-ig-45",
+    });
+    expect(igProj.aspectRatio).toBe("4:5");
+    expect(igProj.clips.length).toBeGreaterThanOrEqual(1);
+
+    const tiktokProj = buildProjectFromTemplate({
+      template: getTemplatePresetById("tiktok-viral-hook"),
+      slotAssetIds: ["clip-ig"],
+      assetsById,
+      projectId: "proj-tt-916",
+    });
+    expect(tiktokProj.aspectRatio).toBe("9:16");
+    expect(tiktokProj.clips.length).toBeGreaterThanOrEqual(1);
+  });
 });

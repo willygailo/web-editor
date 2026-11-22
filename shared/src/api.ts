@@ -3,6 +3,7 @@ import {
   AspectRatioSchema,
   CutProjectSchema,
   MediaAssetSchema,
+  PlatformPresetSchema,
   TextOverlaySchema,
 } from "./edl.js";
 import { CutTemplatePresetSchema } from "./templates.js";
@@ -12,6 +13,7 @@ export const AutoEditRequestSchema = z.object({
   assetIds: z.array(z.string().min(1)).min(1),
   audioAssetId: z.string().optional(),
   templateId: z.string().optional(),
+  platform: PlatformPresetSchema.optional(),
   aspectRatio: AspectRatioSchema.optional(),
   targetDurationSec: z.number().min(3).max(180).optional(),
   mode: z.enum(["auto", "claude", "gemini", "offline"]).default("auto"),

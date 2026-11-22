@@ -10,6 +10,7 @@ export interface ProbedMedia {
   hasAudio: boolean;
   beatMarkersSec: number[];
   energyPeaksSec: number[];
+  visualHighlightsSec: number[];
   silenceRanges: SilenceRange[];
 }
 
@@ -164,6 +165,56 @@ function detectEnergyPeaksFromPcm(pcm: Buffer, sampleRate = 8000): {
   };
 }
 
+async function detectVisualHighlights(
+  filePath: string,
+  durationSec: number
+): Promise<number[]> {
+  if (durationSec < 0.8) return [];
+  const highlights: number[] = [];
+
+  try {
+    const res = await runProcess(
+      "ffmpeg",
+      [
+        "-i",
+        filePath,
+        "-vf",
+        "scale=160:-2,select='gt(scene,0.18)',showinfo",
+        "-an",
+        "-f",
+        "null",
+        "-",
+      ],
+      { timeoutMs: 8_000 }
+    );
+    let lastSec = -1;
+    for (const line of res.stderr.split(/\r?\n/)) {
+      const m = /pts_time:([0-9.]+)/.exec(line);
+      if (!m) continue;
+      const t = Number(Number(m[1]).toFixed(2));
+      if (Number.isFinite(t) && t >= 0.15 && t < durationSec - 0.3 && t - lastSec >= 0.7) {
+        highlights.push(t);
+        lastSec = t;
+        if (highlights.length >= 16) break;
+      }
+    }
+  } catch {
+    // fallback evenly below
+  }
+
+  if (highlights.length < 2 && durationSec >= 2.5) {
+    for (const ratio of [0.15, 0.45, 0.72]) {
+      const candidate = Number((durationSec * ratio).toFixed(2));
+      if (!highlights.some((h) => Math.abs(h - candidate) < 0.7)) {
+        highlights.push(candidate);
+      }
+    }
+    highlights.sort((a, b) => a - b);
+  }
+
+  return highlights.slice(0, 16);
+}
+
 export async function analyzeAudioTrack(
   filePath: string,
   durationSec: number
@@ -266,12 +317,17 @@ export async function probeMediaFile(
   let silenceRanges: SilenceRange[] = [];
   let energyPeaksSec: number[] = [];
   let beatMarkersSec: number[] = [];
+  let visualHighlightsSec: number[] = [];
 
   if (hasAudio) {
     const audioAnalysis = await analyzeAudioTrack(filePath, durationSec);
     silenceRanges = audioAnalysis.silenceRanges;
     energyPeaksSec = audioAnalysis.energyPeaksSec;
     beatMarkersSec = audioAnalysis.beatMarkersSec;
+  }
+
+  if (kind === "video") {
+    visualHighlightsSec = await detectVisualHighlights(filePath, durationSec);
   }
 
   return {
@@ -282,6 +338,7 @@ export async function probeMediaFile(
     hasAudio,
     beatMarkersSec,
     energyPeaksSec,
+    visualHighlightsSec,
     silenceRanges,
   };
 }

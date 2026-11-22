@@ -699,10 +699,16 @@ export class PreviewCompositor {
     }
 
     if (selectedIds?.showSafeZones) {
-      const topPad = Math.round(targetH * (project.aspectRatio === "9:16" ? 0.12 : 0.08));
-      const bottomPad = Math.round(targetH * (project.aspectRatio === "9:16" ? 0.22 : 0.14));
+      const topPad = Math.round(
+        targetH * (project.aspectRatio === "9:16" ? 0.12 : project.aspectRatio === "4:5" ? 0.1 : 0.08),
+      );
+      const bottomPad = Math.round(
+        targetH * (project.aspectRatio === "9:16" ? 0.22 : project.aspectRatio === "4:5" ? 0.16 : 0.14),
+      );
       const sideLeftPad = Math.round(targetW * 0.06);
-      const sideRightPad = Math.round(targetW * (project.aspectRatio === "9:16" ? 0.16 : 0.06));
+      const sideRightPad = Math.round(
+        targetW * (project.aspectRatio === "9:16" ? 0.16 : project.aspectRatio === "4:5" ? 0.08 : 0.06),
+      );
       const safeW = Math.max(40, targetW - sideLeftPad - sideRightPad);
       const safeH = Math.max(40, targetH - topPad - bottomPad);
 

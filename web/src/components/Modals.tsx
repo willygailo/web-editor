@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Download, Music2, Share2, X } from "lucide-react";
+import { SocialCaptionCard } from "./SocialCaptionCard";
 import {
   getProjectAudioTracks,
   type CutProject,
@@ -170,6 +171,7 @@ export function ExportModal({ open, onClose, project, onOpenAudioDrawer }: Expor
               )}
             </div>
           </div>
+          <SocialCaptionCard socialCaption={project.socialCaption} hashtags={project.hashtags} />
 
           {tracks.length === 0 && (
             <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">

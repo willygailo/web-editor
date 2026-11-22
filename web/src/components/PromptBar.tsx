@@ -1,11 +1,31 @@
+import type { PlatformPreset } from "@cutflow/shared";
 import { Sparkles, Wand2 } from "lucide-react";
 
 const QUICK_PROMPTS = [
-  { label: "🔥 Hype 15s TikTok", prompt: "Gawa ka ng hype 15s TikTok edit with smooth zoom" },
-  { label: "🌴 Chill Vlog 20s", prompt: "Chill aesthetic travel vlog 20s with crossfade" },
+  {
+    label: "🔥 Viral TikTok Hook",
+    prompt: "Gawa ka ng hype 15s TikTok viral hook edit with pop captions and smooth zoom",
+  },
+  {
+    label: "📸 IG 4:5 Aesthetic",
+    prompt: "Aesthetic 4:5 Instagram Feed edit 18s with warm color grade and crossfade",
+  },
   { label: "⚡ Beat Flash 12s", prompt: "Fast beat flash montage 12s synced to music" },
-  { label: "🎬 16:9 Cinematic", prompt: "Cinematic 16:9 film story with warm color" },
-  { label: "🛍️ Product 1:1 Ad", prompt: "Punchy 1:1 product promo ad \"MUST HAVE\"" },
+  {
+    label: "🎬 YT 16:9 Story",
+    prompt: "Cinematic 16:9 YouTube story with clean chapter titles and warm color",
+  },
+  { label: "🛍️ Product 1:1 Ad", prompt: 'Punchy 1:1 product promo ad with CTA "MUST HAVE"' },
+];
+
+const PLATFORM_PILLS: { id: PlatformPreset; label: string }[] = [
+  { id: "auto", label: "Auto" },
+  { id: "tiktok", label: "TikTok 9:16" },
+  { id: "instagram-reels", label: "IG Reels" },
+  { id: "instagram-feed", label: "IG Feed 4:5" },
+  { id: "youtube-shorts", label: "YT Shorts" },
+  { id: "youtube-landscape", label: "YT 16:9" },
+  { id: "promo-ad", label: "Promo 1:1" },
 ];
 
 export type AiMode = "auto" | "claude" | "gemini" | "offline";
@@ -18,6 +38,8 @@ interface PromptBarProps {
   disabled: boolean;
   mode: AiMode;
   onModeChange: (mode: AiMode) => void;
+  platform: PlatformPreset;
+  onPlatformChange: (platform: PlatformPreset) => void;
   hasProject: boolean;
 }
 
@@ -29,6 +51,8 @@ export function PromptBar({
   disabled,
   mode,
   onModeChange,
+  platform,
+  onPlatformChange,
   hasProject,
 }: PromptBarProps) {
   return (
@@ -39,7 +63,7 @@ export function PromptBar({
       }}
       className="flex flex-col gap-2 rounded-2xl border border-slate-800/80 bg-[#111520] p-3"
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-cyan-300 uppercase">
           <Sparkles className="size-3.5" aria-hidden="true" />
           <span>AI Auto-Cut Director</span>
@@ -65,6 +89,27 @@ export function PromptBar({
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="studio-tablist items-center gap-1 pb-0.5" aria-label="Target social platform">
+        <span className="shrink-0 pr-1 text-[10px] font-semibold tracking-wide text-slate-400 uppercase">
+          Platform
+        </span>
+        {PLATFORM_PILLS.map((pill) => (
+          <button
+            key={pill.id}
+            type="button"
+            onClick={() => onPlatformChange(pill.id)}
+            aria-pressed={platform === pill.id}
+            className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium transition ${
+              platform === pill.id
+                ? "border-indigo-400/70 bg-indigo-500/25 text-indigo-200"
+                : "border-slate-800 bg-[#090b10] text-slate-400 hover:border-slate-600 hover:text-slate-200"
+            }`}
+          >
+            {pill.label}
+          </button>
+        ))}
       </div>
 
       <div className="flex gap-2">

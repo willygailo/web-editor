@@ -159,6 +159,7 @@ export async function ensureBuiltinAudioBeats(
       hasAudio: true,
       beatMarkersSec: beats,
       energyPeaksSec: beats,
+      visualHighlightsSec: [],
       silenceRanges: [],
       isBuiltIn: true,
     };
@@ -294,6 +295,7 @@ async function ensureBuiltinSfx(
         hasAudio: true,
         beatMarkersSec: [],
         energyPeaksSec: [0.05],
+        visualHighlightsSec: [],
         silenceRanges: [],
         isBuiltIn: true,
       },
@@ -406,6 +408,7 @@ export async function ensureSampleDemoClips(
       hasAudio: probed.hasAudio,
       beatMarkersSec: probed.beatMarkersSec,
       energyPeaksSec: probed.energyPeaksSec,
+      visualHighlightsSec: probed.visualHighlightsSec,
       silenceRanges: probed.silenceRanges,
       isBuiltIn: true,
     };

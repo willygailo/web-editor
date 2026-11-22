@@ -1321,4 +1321,189 @@ describe("Challenge Audit Fixes (Audio Drift, Rotation, ASS Colors, Remix Sticke
     );
     expect(cleared.project.stickers.length).toBe(0);
   });
+
+  it("probes visualHighlightsSec on silent video, directs IG 4:5 & TikTok edits with SFX + social metadata, and exports 4:5 MP4", async () => {
+    const silentPath = path.join(tempRoot, "silent-scene.mp4");
+    const introMusicPath = path.join(tempRoot, "intro-music.wav");
+    const sfxPath = path.join(tempRoot, "whoosh-sfx.wav");
+    const assPath = path.join(tempRoot, "ig-45.ass");
+    const out45Path = path.join(tempRoot, "ig-45-output.mp4");
+
+    const genSilent = await runProcess("ffmpeg", [
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=navy:s=720x900:d=1.5:r=30",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=gold:s=720x900:d=2.0:r=30",
+      "-filter_complex",
+      "[0:v][1:v]concat=n=2:v=1:a=0[v]",
+      "-map",
+      "[v]",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "ultrafast",
+      silentPath,
+    ]);
+    const genMusic = await runProcess("ffmpeg", [
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:duration=12",
+      "-c:a",
+      "pcm_s16le",
+      introMusicPath,
+    ]);
+    const genSfx = await runProcess("ffmpeg", [
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=880:duration=0.4",
+      "-c:a",
+      "pcm_s16le",
+      sfxPath,
+    ]);
+    expect(genSilent.code).toBe(0);
+    expect(genMusic.code).toBe(0);
+    expect(genSfx.code).toBe(0);
+
+    const probedSilent = await probeMediaFile(silentPath, "video");
+    expect(probedSilent.hasAudio).toBe(false);
+    expect(probedSilent.visualHighlightsSec.length).toBeGreaterThan(0);
+
+    const proAssets: MediaAsset[] = [
+      {
+        id: "v-silent",
+        filename: "silent-scene.mp4",
+        originalName: "Silent Action",
+        kind: "video",
+        mimeType: "video/mp4",
+        url: "/api/media/v-silent/stream",
+        durationSec: probedSilent.durationSec,
+        width: probedSilent.width,
+        height: probedSilent.height,
+        fps: probedSilent.fps,
+        hasAudio: false,
+        beatMarkersSec: [],
+        visualHighlightsSec: probedSilent.visualHighlightsSec,
+        energyPeaksSec: [],
+        silenceRanges: [],
+        isBuiltIn: false,
+      },
+      {
+        id: "m-intro",
+        filename: "intro-music.wav",
+        originalName: "Chill Aesthetic Beat",
+        kind: "audio",
+        audioCategory: "bgm",
+        mimeType: "audio/wav",
+        url: "/api/media/m-intro/stream",
+        durationSec: 12,
+        hasAudio: true,
+        beatMarkersSec: [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5],
+        visualHighlightsSec: [],
+        energyPeaksSec: [2.2, 4.0],
+        silenceRanges: [{ startSec: 0, endSec: 1.6 }],
+        isBuiltIn: true,
+      },
+      {
+        id: "builtin-sfx-whoosh",
+        filename: "whoosh-sfx.wav",
+        originalName: "Whoosh Transition",
+        kind: "audio",
+        audioCategory: "sfx",
+        mimeType: "audio/wav",
+        url: "/api/media/builtin-sfx-whoosh/stream",
+        durationSec: 0.4,
+        hasAudio: true,
+        beatMarkersSec: [],
+        visualHighlightsSec: [],
+        energyPeaksSec: [0.05],
+        silenceRanges: [],
+        isBuiltIn: true,
+      },
+      {
+        id: "builtin-sfx-pop",
+        filename: "whoosh-sfx.wav",
+        originalName: "Pop Hook",
+        kind: "audio",
+        audioCategory: "sfx",
+        mimeType: "audio/wav",
+        url: "/api/media/builtin-sfx-pop/stream",
+        durationSec: 0.4,
+        hasAudio: true,
+        beatMarkersSec: [],
+        visualHighlightsSec: [],
+        energyPeaksSec: [0.05],
+        silenceRanges: [],
+        isBuiltIn: true,
+      },
+    ];
+
+    const proMap = new Map(proAssets.map((a) => [a.id, a]));
+    const proPaths = new Map<string, string>([
+      ["v-silent", silentPath],
+      ["m-intro", introMusicPath],
+      ["builtin-sfx-whoosh", sfxPath],
+      ["builtin-sfx-pop", sfxPath],
+    ]);
+
+    const { project: igProj } = generateOfflineCutProject(
+      {
+        prompt: "Aesthetic golden hour vibe 4s",
+        assetIds: ["v-silent"],
+        audioAssetId: "m-intro",
+        platform: "instagram-feed",
+        mode: "offline",
+      },
+      proMap
+    );
+
+    expect(igProj.platform).toBe("instagram-feed");
+    expect(igProj.aspectRatio).toBe("4:5");
+    expect(igProj.overlays.length).toBeGreaterThanOrEqual(2);
+    expect(igProj.socialCaption).toBeTruthy();
+    expect((igProj.hashtags ?? []).length).toBeGreaterThanOrEqual(3);
+    expect(igProj.audioTracks.find((t) => t.kind === "bgm")?.startOffsetSec).toBeGreaterThan(0);
+    expect(igProj.audioTracks.some((t) => t.kind === "sfx")).toBe(true);
+
+    const { project: tiktokProj } = generateOfflineCutProject(
+      {
+        prompt: "Hype viral drop 4s",
+        assetIds: ["v-silent"],
+        audioAssetId: "m-intro",
+        platform: "tiktok",
+        mode: "offline",
+      },
+      proMap
+    );
+    expect(tiktokProj.platform).toBe("tiktok");
+    expect(tiktokProj.aspectRatio).toBe("9:16");
+    for (const ov of tiktokProj.overlays) {
+      expect(ov.yNorm).toBeGreaterThanOrEqual(0.16);
+      expect(ov.yNorm).toBeLessThanOrEqual(0.72);
+    }
+
+    const ass = generateAssSubtitles(igProj.overlays, igProj.aspectRatio, "720p");
+    fs.writeFileSync(assPath, ass, "utf8");
+    const plan = buildFfmpegRenderPlan({
+      project: igProj,
+      quality: "720p",
+      assetsById: proMap,
+      filePathsById: proPaths,
+      outputPath: out45Path,
+      assSubtitlePath: assPath,
+    });
+    const render45 = await runProcess("ffmpeg", plan.args, { timeoutMs: 60_000 });
+    expect(render45.code, render45.stderr).toBe(0);
+    const final45 = await probeMediaFile(out45Path, "video");
+    expect(final45.width).toBe(720);
+    expect(final45.height).toBe(900);
+  }, 60_000);
 });

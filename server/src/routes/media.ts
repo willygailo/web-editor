@@ -106,6 +106,7 @@ export function registerMediaRoutes(
           hasAudio: probed.hasAudio,
           beatMarkersSec: probed.beatMarkersSec,
           energyPeaksSec: probed.energyPeaksSec,
+          visualHighlightsSec: probed.visualHighlightsSec,
           silenceRanges: probed.silenceRanges,
           isBuiltIn: false,
         };
@@ -229,6 +230,7 @@ export function registerMediaRoutes(
         hasAudio: true,
         beatMarkersSec: probed.beatMarkersSec,
         energyPeaksSec: probed.energyPeaksSec,
+        visualHighlightsSec: [],
         silenceRanges: probed.silenceRanges,
         isBuiltIn: false,
       };

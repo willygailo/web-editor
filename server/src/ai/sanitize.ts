@@ -203,6 +203,19 @@ export function resolveAiAudioTracks(params: {
     ];
   }
 
+  const firstSilence = chosenBgm.silenceRanges[0];
+  let defaultOffset = 0;
+  if (firstSilence && firstSilence.startSec <= 0.4 && firstSilence.endSec >= 1.5) {
+    const firstPeak = chosenBgm.energyPeaksSec[0] ?? chosenBgm.beatMarkersSec[0];
+    const target =
+      firstPeak !== undefined && firstPeak >= firstSilence.endSec - 0.5
+        ? firstPeak
+        : firstSilence.endSec;
+    if (chosenBgm.durationSec - target >= 1.5) {
+      defaultOffset = Number(Math.max(0, target).toFixed(2));
+    }
+  }
+
   const freshBgm: AudioTrack = {
     id: "aud-bgm-1",
     kind: "bgm",
@@ -210,7 +223,7 @@ export function resolveAiAudioTracks(params: {
     title: chosenBgm.originalName,
     timelineStartSec: 0,
     durationSec: totalDurationSec,
-    startOffsetSec: 0,
+    startOffsetSec: defaultOffset,
     volume: 0.85,
     fadeInSec: 0.2,
     fadeOutSec: 0.7,

@@ -1,7 +1,18 @@
 import { z } from "zod";
 
-export const AspectRatioSchema = z.enum(["9:16", "16:9", "1:1"]);
+export const AspectRatioSchema = z.enum(["9:16", "4:5", "16:9", "1:1"]);
 export type AspectRatio = z.infer<typeof AspectRatioSchema>;
+
+export const PlatformPresetSchema = z.enum([
+  "auto",
+  "tiktok",
+  "instagram-reels",
+  "instagram-feed",
+  "youtube-shorts",
+  "youtube-landscape",
+  "promo-ad",
+]);
+export type PlatformPreset = z.infer<typeof PlatformPresetSchema>;
 
 export const MotionPresetSchema = z.enum([
   "none",
@@ -73,6 +84,7 @@ export const MediaAssetSchema = z.object({
   hasAudio: z.boolean().default(false),
   beatMarkersSec: z.array(z.number().min(0)).default([]),
   energyPeaksSec: z.array(z.number().min(0)).default([]),
+  visualHighlightsSec: z.array(z.number().min(0)).default([]),
   silenceRanges: z.array(SilenceRangeSchema).default([]),
   isBuiltIn: z.boolean().default(false),
 });
@@ -166,6 +178,9 @@ export const CutProjectSchema = z.object({
   templateId: z.string().min(1),
   promptUsed: z.string().default(""),
   aiSummary: z.string().optional(),
+  platform: PlatformPresetSchema.optional(),
+  socialCaption: z.string().max(400).optional(),
+  hashtags: z.array(z.string().max(40)).max(12).optional(),
   modeUsed: z.enum(["claude", "gemini", "offline", "template"]).default("offline"),
   aspectRatio: AspectRatioSchema.default("9:16"),
   fps: z.number().int().min(24).max(60).default(30),
@@ -236,6 +251,8 @@ export function getAspectDimensions(
   switch (aspectRatio) {
     case "9:16":
       return { width: shortSide, height: longSide };
+    case "4:5":
+      return { width: shortSide, height: preset === "1080p" ? 1350 : 900 };
     case "16:9":
       return { width: longSide, height: shortSide };
     case "1:1":

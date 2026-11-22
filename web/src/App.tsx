@@ -23,7 +23,17 @@ import {
   type CutTemplatePreset,
   type HealthResponse,
   type MediaAsset,
+  type PlatformPreset,
 } from "@cutflow/shared";
+
+const PLATFORM_DEFAULT_ASPECT: Partial<Record<PlatformPreset, AspectRatio>> = {
+  tiktok: "9:16",
+  "instagram-reels": "9:16",
+  "instagram-feed": "4:5",
+  "youtube-shorts": "9:16",
+  "youtube-landscape": "16:9",
+  "promo-ad": "1:1",
+};
 import {
   deleteCustomTemplate,
   deleteMedia,
@@ -61,6 +71,7 @@ export function App() {
 
   const [prompt, setPrompt] = useState("Gawa ka ng hype 15s TikTok edit with smooth zoom");
   const [mode, setMode] = useState<AiMode>("auto");
+  const [platform, setPlatform] = useState<PlatformPreset>("auto");
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -349,9 +360,12 @@ export function App() {
           assetIds: selectedVisualIds,
           audioAssetId: project?.audioTracks?.[0]?.assetId ?? pendingAudioId ?? undefined,
           templateId: templateOverride?.id,
-          aspectRatio: templateOverride?.defaultAspectRatio ?? project?.aspectRatio,
+          aspectRatio:
+            templateOverride?.defaultAspectRatio ??
+            (platform !== "auto" ? PLATFORM_DEFAULT_ASPECT[platform] : project?.aspectRatio),
           targetDurationSec: templateOverride?.defaultDurationSec,
           mode,
+          platform,
           previousProject: sanitizedPrev,
         },
         {
@@ -504,7 +518,7 @@ export function App() {
                 aria-label="Aspect ratio"
                 className="flex items-center rounded-xl border border-slate-800 bg-[#090b10] p-0.5 text-[11px] font-bold"
               >
-                {(["9:16", "16:9", "1:1"] as AspectRatio[]).map((ratio) => (
+                {(["9:16", "4:5", "16:9", "1:1"] as AspectRatio[]).map((ratio) => (
                   <button
                     key={ratio}
                     type="button"
@@ -703,6 +717,8 @@ export function App() {
               disabled={selectedVisualIds.length === 0}
               mode={mode}
               onModeChange={setMode}
+              platform={platform}
+              onPlatformChange={setPlatform}
               hasProject={Boolean(project)}
             />
           </div>
@@ -845,6 +861,8 @@ export function App() {
                   disabled={selectedVisualIds.length === 0}
                   mode={mode}
                   onModeChange={setMode}
+                  platform={platform}
+                  onPlatformChange={setPlatform}
                   hasProject={Boolean(project)}
                 />
               )}

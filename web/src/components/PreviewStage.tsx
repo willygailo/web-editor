@@ -286,7 +286,9 @@ export function PreviewStage({
       ? "aspect-video"
       : project?.aspectRatio === "1:1"
         ? "aspect-square"
-        : "aspect-[9/16]";
+        : project?.aspectRatio === "4:5"
+          ? "aspect-[4/5]"
+          : "aspect-[9/16]";
 
   return (
     <div className="flex flex-col items-center justify-center gap-1.5">

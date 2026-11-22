@@ -15,6 +15,7 @@ const mockAssets = new Map<string, MediaAsset>([
       durationSec: 5,
       hasAudio: false,
       beatMarkersSec: [],
+      visualHighlightsSec: [],
       energyPeaksSec: [0.5, 2.5],
       silenceRanges: [],
       isBuiltIn: true,
@@ -32,6 +33,7 @@ const mockAssets = new Map<string, MediaAsset>([
       durationSec: 20,
       hasAudio: true,
       beatMarkersSec: [0, 0.5, 1.0, 1.5, 2.0],
+      visualHighlightsSec: [],
       energyPeaksSec: [],
       silenceRanges: [],
       isBuiltIn: true,
@@ -176,5 +178,119 @@ describe("Anthropic Claude Sonnet 5.5 AI Director", () => {
     expect(result.project.overlays[0]?.text).toBe("SIARGAO DROP");
     expect(result.project.stickers.length).toBe(1);
     expect(result.project.stickers[0]?.id).toBe("stk-remix");
+  });
+
+  it("supports platform presets, clamps overlays inside safe zones, merges SFX cues, and attaches social metadata", async () => {
+    const assetsWithSfx = new Map(mockAssets);
+    assetsWithSfx.set("builtin-sfx-whoosh", {
+      id: "builtin-sfx-whoosh",
+      filename: "whoosh.m4a",
+      originalName: "Whoosh SFX",
+      kind: "audio",
+      audioCategory: "sfx",
+      mimeType: "audio/mp4",
+      url: "/api/media/builtin-sfx-whoosh/stream",
+      durationSec: 0.6,
+      hasAudio: true,
+      beatMarkersSec: [],
+      visualHighlightsSec: [],
+      energyPeaksSec: [0.1],
+      silenceRanges: [],
+      isBuiltIn: true,
+    });
+
+    const mockFetch: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.endsWith("/organizations/workspaces")) {
+        return new Response(
+          JSON.stringify({ data: [{ id: "wrkspc_test_123", name: "default", archived_at: null }] }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          content: [
+            {
+              type: "tool_use",
+              name: "emit_cut_project",
+              input: {
+                title: "TikTok Viral Pro",
+                templateId: "tiktok-viral-hook",
+                aiSummary: "Directed 3-act TikTok hook edit with whoosh SFX.",
+                aspectRatio: "9:16",
+                socialCaption: "Wait till the beat drops on this view!",
+                hashtags: ["#tiktok", "#siargao", "#travel"],
+                clips: [
+                  {
+                    assetId: "clip-1",
+                    sourceStartSec: 0,
+                    sourceEndSec: 1.4,
+                    speed: 1,
+                    motion: "punch-zoom",
+                    transitionIn: "cut",
+                    transitionDurationSec: 0,
+                    filter: "vivid",
+                    muteOriginalAudio: true,
+                    volume: 0,
+                    adjust: { contrast: 1.08, saturation: 1.1, warmth: 0.04, brightness: 0, vignette: 0.1 },
+                  },
+                  {
+                    assetId: "clip-1",
+                    sourceStartSec: 1.6,
+                    sourceEndSec: 3.4,
+                    speed: 1.1,
+                    motion: "zoom-in",
+                    transitionIn: "flash-white",
+                    transitionDurationSec: 0.25,
+                    filter: "vivid",
+                    muteOriginalAudio: true,
+                    volume: 0,
+                  },
+                ],
+                overlays: [
+                  {
+                    text: "WAIT FOR IT",
+                    startSec: 0,
+                    endSec: 1.6,
+                    position: "bottom",
+                    style: "capcut-pop",
+                    animation: "pop",
+                    yNorm: 0.92,
+                  },
+                ],
+                audioAssetId: "beat-1",
+                sfxCues: [{ assetId: "builtin-sfx-whoosh", timelineStartSec: 1.25, volume: 0.7 }],
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    };
+
+    const result = await generateAnthropicCutProject({
+      apiKey: "sk-ant-usr-mock-key",
+      model: "claude-sonnet-5-5",
+      request: {
+        prompt: "Make a viral TikTok hook edit",
+        assetIds: ["clip-1"],
+        audioAssetId: "beat-1",
+        platform: "tiktok",
+        mode: "claude",
+      },
+      assetsById: assetsWithSfx,
+      filePathsById: new Map(),
+      fetchFn: mockFetch,
+    });
+
+    expect(result.project.platform).toBe("tiktok");
+    expect(result.project.aspectRatio).toBe("9:16");
+    expect(result.project.socialCaption).toBe("Wait till the beat drops on this view!");
+    expect(result.project.hashtags).toEqual(["#tiktok", "#siargao", "#travel"]);
+    expect(result.project.overlays[0]?.animation).toBe("pop");
+    expect(result.project.overlays[0]?.yNorm).toBeLessThanOrEqual(0.72);
+    expect(result.project.audioTracks.some((t) => t.kind === "sfx" && t.assetId === "builtin-sfx-whoosh")).toBe(
+      true
+    );
   });
 });
