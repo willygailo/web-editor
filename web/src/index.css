@@ -49,6 +49,66 @@ p, li {
   min-inline-size: var(--target-size);
 }
 
+:where(button) {
+  transition: box-shadow 150ms ease-out, scale 150ms ease-out;
+}
+
+button:active:not(:disabled) {
+  scale: 0.97;
+}
+
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* Native range slider styling (separate WebKit & Firefox blocks per guidance) */
+input[type="range"] {
+  --slider-track-size: 0.375rem;
+  --slider-thumb-size: 1rem;
+  --slider-track-color: #1e293b;
+  --slider-fill-color: var(--accent-primary);
+  appearance: none;
+  inline-size: 100%;
+  block-size: 2rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  block-size: var(--slider-track-size);
+  border-radius: 999px;
+  background: var(--slider-track-color);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  inline-size: var(--slider-thumb-size);
+  block-size: var(--slider-thumb-size);
+  margin-block-start: calc((var(--slider-track-size) - var(--slider-thumb-size)) / 2);
+  border: 0;
+  border-radius: 50%;
+  background: var(--slider-fill-color);
+}
+
+input[type="range"]::-moz-range-track {
+  block-size: var(--slider-track-size);
+  border-radius: 999px;
+  background: var(--slider-track-color);
+}
+
+input[type="range"]::-moz-range-thumb {
+  inline-size: var(--slider-thumb-size);
+  block-size: var(--slider-thumb-size);
+  border: 0;
+  border-radius: 50%;
+  background: var(--slider-fill-color);
+}
+
 /* Native modal dialog best practices */
 dialog:modal {
   overscroll-behavior: contain;
@@ -65,7 +125,21 @@ dialog::backdrop {
   backdrop-filter: blur(6px);
 }
 
-/* Container queries for adaptive cards inside narrow mobile drawers vs desktop panes */
+/* Drag handles for timeline trim edges and canvas items */
+.drag-handle {
+  cursor: ew-resize;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.canvas-draggable {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Container queries for adaptive cards */
 .panel-container {
   container: panel / inline-size;
 }
@@ -79,6 +153,22 @@ dialog::backdrop {
 @container panel (inline-size > 26rem) {
   .media-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.card-reveal-actions {
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+
+.group:hover .card-reveal-actions,
+.group:focus-within .card-reveal-actions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .card-reveal-actions {
+    opacity: 1;
   }
 }
 
@@ -111,7 +201,6 @@ dialog::backdrop {
   border-radius: 999px;
 }
 
-/* Safe area utility padding */
 .safe-top {
   padding-top: max(0.5rem, env(safe-area-inset-top, 0px));
 }

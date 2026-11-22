@@ -1,5 +1,6 @@
 import {
   getAspectDimensions,
+  getOverlayNormalizedPos,
   type AspectRatio,
   type OverlayPosition,
   type OverlayStyle,
@@ -23,15 +24,14 @@ function escapeAssText(text: string): string {
     .replace(/\r?\n/g, "\\N");
 }
 
-function alignmentForPosition(pos: OverlayPosition): number {
-  switch (pos) {
-    case "top":
-      return 8;
-    case "center":
-      return 5;
-    case "bottom":
-      return 2;
-  }
+function hexToAssBgr(hex?: string): string | null {
+  if (!hex) return null;
+  const clean = hex.trim().replace(/^#/, "");
+  if (!/^[0-9a-fA-F]{6}$/.test(clean)) return null;
+  const rr = clean.slice(0, 2);
+  const gg = clean.slice(2, 4);
+  const bb = clean.slice(4, 6);
+  return `&H00${bb}${gg}${rr}`.toUpperCase();
 }
 
 function styleNameFor(style: OverlayStyle, pos: OverlayPosition): string {
@@ -48,34 +48,64 @@ export function generateAssSubtitles(
   const fontSizeHook = Math.round(64 * scale);
   const fontSizePop = Math.round(54 * scale);
   const fontSizeCaption = Math.round(44 * scale);
-  const marginV = Math.round(height * 0.12);
 
   const positions: OverlayPosition[] = ["top", "center", "bottom"];
   const styles: string[] = [];
 
   for (const pos of positions) {
-    const align = alignmentForPosition(pos);
-    const vMargin = pos === "center" ? 20 : marginV;
-
-    // ASS colors are &HAABBGGRR
+    // Use alignment 5 (center anchor) so \pos(x,y) places centers consistently with Canvas
     styles.push(
-      `Style: ${styleNameFor("bold-hook", pos)},DejaVu Sans,${fontSizeHook},&H00FFFFFF,&H000000FF,&H00120A1E,&H80000000,-1,0,0,0,100,100,2,0,1,4,2,${align},60,60,${vMargin},1`
+      `Style: ${styleNameFor("bold-hook", pos)},DejaVu Sans,${fontSizeHook},&H00FFFFFF,&H000000FF,&H00120A1E,&H80000000,-1,0,0,0,100,100,2,0,1,4,2,5,60,60,20,1`
     );
     styles.push(
-      `Style: ${styleNameFor("capcut-pop", pos)},DejaVu Sans,${fontSizePop},&H00141414,&H000000FF,&H003CE6FF,&H003CE6FF,-1,0,0,0,100,100,1,0,3,10,0,${align},60,60,${vMargin},1`
+      `Style: ${styleNameFor("capcut-pop", pos)},DejaVu Sans,${fontSizePop},&H00141414,&H000000FF,&H003CE6FF,&H003CE6FF,-1,0,0,0,100,100,1,0,3,10,0,5,60,60,20,1`
     );
     styles.push(
-      `Style: ${styleNameFor("minimal-caption", pos)},DejaVu Sans,${fontSizeCaption},&H00F8FAFC,&H000000FF,&H60000000,&H60000000,0,0,0,0,100,100,1,0,1,2,1,${align},70,70,${vMargin},1`
+      `Style: ${styleNameFor("minimal-caption", pos)},DejaVu Sans,${fontSizeCaption},&H00F8FAFC,&H000000FF,&H60000000,&H60000000,0,0,0,0,100,100,1,0,1,2,1,5,70,70,20,1`
     );
     styles.push(
-      `Style: ${styleNameFor("neon-badge", pos)},DejaVu Sans,${fontSizePop},&H00FFFF22,&H000000FF,&H004D12FF,&H80000000,-1,0,0,0,100,100,2,0,3,8,0,${align},60,60,${vMargin},1`
+      `Style: ${styleNameFor("neon-badge", pos)},DejaVu Sans,${fontSizePop},&H00FFFF22,&H000000FF,&H004D12FF,&H80000000,-1,0,0,0,100,100,2,0,3,8,0,5,60,60,20,1`
     );
   }
 
   const events = overlays.map((o) => {
     const styleName = styleNameFor(o.style, o.position);
-    const anim = o.style === "capcut-pop" || o.style === "bold-hook" ? "{\\fad(120,120)}" : "{\\fad(180,180)}";
-    return `Dialogue: 0,${formatAssTime(o.startSec)},${formatAssTime(o.endSec)},${styleName},,0,0,0,,${anim}${escapeAssText(o.text)}`;
+    const { xNorm, yNorm } = getOverlayNormalizedPos(o);
+    const px = Math.round(xNorm * width);
+    const py = Math.round(yNorm * height);
+    const baseScale = Math.round((o.scale ?? 1) * 100);
+    const rot = Number((-(o.rotationDeg ?? 0)).toFixed(1));
+
+    const tags: string[] = [`\\an5`];
+    if (o.animation === "slide-up") {
+      const startY = Math.min(height - 10, py + Math.round(height * 0.04));
+      tags.push(`\\move(${px},${startY},${px},${py},0,220)`);
+      tags.push(`\\fad(140,120)`);
+      tags.push(`\\fscx${baseScale}\\fscy${baseScale}`);
+    } else if (o.animation === "pop") {
+      const s0 = Math.max(20, Math.round(baseScale * 0.72));
+      const s1 = Math.round(baseScale * 1.07);
+      tags.push(`\\pos(${px},${py})`);
+      tags.push(`\\fscx${s0}\\fscy${s0}`);
+      tags.push(`\\t(0,130,\\fscx${s1}\\fscy${s1})`);
+      tags.push(`\\t(130,220,\\fscx${baseScale}\\fscy${baseScale})`);
+      tags.push(`\\fad(80,100)`);
+    } else if (o.animation === "fade") {
+      tags.push(`\\pos(${px},${py})\\fscx${baseScale}\\fscy${baseScale}\\fad(220,220)`);
+    } else {
+      tags.push(`\\pos(${px},${py})\\fscx${baseScale}\\fscy${baseScale}`);
+    }
+
+    if (Math.abs(rot) > 0.2) {
+      tags.push(`\\frz${rot}`);
+    }
+
+    const primaryColor = hexToAssBgr(o.color);
+    if (primaryColor) tags.push(`\\1c${primaryColor}&`);
+    const bgColor = hexToAssBgr(o.bgColor);
+    if (bgColor) tags.push(`\\3c${bgColor}&\\4c${bgColor}&`);
+
+    return `Dialogue: 0,${formatAssTime(o.startSec)},${formatAssTime(o.endSec)},${styleName},,0,0,0,,{${tags.join("")}}${escapeAssText(o.text)}`;
   });
 
   return [

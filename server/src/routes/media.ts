@@ -5,8 +5,14 @@ import { pipeline } from "node:stream/promises";
 import type { FastifyInstance } from "fastify";
 import type { MediaAsset, MediaKind } from "@cutflow/shared";
 import type { ServerConfig } from "../config.js";
+import { generateAutoCaptions } from "../ai/transcribe.js";
 import { ensureSampleDemoClips } from "../media/audioSynth.js";
-import { generateThumbnail, probeMediaFile } from "../media/probe.js";
+import {
+  extractAudioFromVideo,
+  extractWaveformPeaks,
+  generateThumbnail,
+  probeMediaFile,
+} from "../media/probe.js";
 import type { MediaStore } from "../media/store.js";
 
 function inferMediaKind(mimeType: string, filename: string): MediaKind | null {
@@ -160,4 +166,84 @@ export function registerMediaRoutes(
     store.remove(request.params.id);
     return { ok: true };
   });
+
+  app.get<{ Params: { id: string }; Querystring: { bins?: string } }>(
+    "/api/media/:id/waveform",
+    async (request, reply) => {
+      const entry = store.get(request.params.id);
+      if (!entry || !fs.existsSync(entry.filePath)) {
+        return reply.status(404).send({ error: "Media not found" });
+      }
+      const bins = Math.min(240, Math.max(24, Number(request.query.bins || "100")));
+      const cachePath = path.join(config.proxiesDir, `${entry.asset.id}.wave-${bins}.json`);
+      const peaks = await extractWaveformPeaks(entry.filePath, cachePath, bins);
+      return {
+        assetId: entry.asset.id,
+        durationSec: entry.asset.durationSec,
+        peaks,
+      };
+    }
+  );
+
+  app.post<{ Params: { id: string } }>(
+    "/api/media/:id/extract-audio",
+    async (request, reply) => {
+      const entry = store.get(request.params.id);
+      if (!entry || !fs.existsSync(entry.filePath)) {
+        return reply.status(404).send({ error: "Media not found" });
+      }
+      if (!entry.asset.hasAudio) {
+        return reply.status(400).send({ error: "This video clip has no audio stream." });
+      }
+
+      const id = crypto.randomUUID();
+      const storedFilename = `${id}.m4a`;
+      const outPath = path.join(config.uploadsDir, storedFilename);
+      const ok = await extractAudioFromVideo(entry.filePath, outPath);
+      if (!ok) {
+        return reply.status(500).send({ error: "Failed to extract audio from video." });
+      }
+
+      const probed = await probeMediaFile(outPath, "audio");
+      const audioAsset: MediaAsset = {
+        id,
+        filename: storedFilename,
+        originalName: `${entry.asset.originalName} (Audio)`,
+        kind: "audio",
+        audioCategory: "bgm",
+        mimeType: "audio/mp4",
+        url: `/api/media/${id}/stream`,
+        durationSec: probed.durationSec,
+        hasAudio: true,
+        beatMarkersSec: probed.beatMarkersSec,
+        energyPeaksSec: probed.energyPeaksSec,
+        silenceRanges: probed.silenceRanges,
+        isBuiltIn: false,
+      };
+
+      store.upsert(audioAsset, outPath);
+      return { asset: audioAsset };
+    }
+  );
+
+  app.post<{ Params: { id: string } }>(
+    "/api/media/:id/transcribe",
+    async (request, reply) => {
+      const entry = store.get(request.params.id);
+      if (!entry || !fs.existsSync(entry.filePath)) {
+        return reply.status(404).send({ error: "Media not found" });
+      }
+      const geminiHeader = request.headers["x-gemini-api-key"];
+      const key =
+        (typeof geminiHeader === "string" && geminiHeader.trim()) ||
+        config.geminiApiKey;
+
+      const result = await generateAutoCaptions({
+        asset: entry.asset,
+        filePath: entry.filePath,
+        geminiApiKey: key,
+      });
+      return result;
+    }
+  );
 }

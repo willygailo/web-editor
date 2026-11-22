@@ -3,64 +3,67 @@ import {
   Download,
   Film,
   LayoutTemplate,
+  Music2,
+  Redo2,
   Scissors,
   Settings,
-  SlidersHorizontal,
+  Sliders,
   Sparkles,
+  Sticker,
+  Type,
+  Undo2,
 } from "lucide-react";
 import {
-  computeTimelineLayout,
-  CUT_TEMPLATE_PRESETS,
+  extractTemplateFromProject,
   type AspectRatio,
-  type ClipSlot,
+  type AudioCategory,
   type CutProject,
   type CutTemplatePreset,
   type HealthResponse,
   type MediaAsset,
-  type TextOverlay,
 } from "@cutflow/shared";
 import {
+  deleteCustomTemplate,
   deleteMedia,
+  extractAudioFromVideo,
   fetchHealth,
   fetchMedia,
+  fetchTemplates,
   loadSamplePack,
   runAutoEdit,
+  saveCustomTemplate,
+  transcribeMedia,
   uploadMediaFiles,
 } from "./api/client";
+import { AudioDrawer } from "./components/AudioDrawer";
 import { MediaBin } from "./components/MediaBin";
 import { ExportModal, SettingsModal } from "./components/Modals";
 import { PreviewStage } from "./components/PreviewStage";
 import { PromptBar, type AiMode } from "./components/PromptBar";
-import { SlotInspector } from "./components/SlotInspector";
+import { SlotInspector, type InspectorSection } from "./components/SlotInspector";
 import { TemplateDrawer } from "./components/TemplateDrawer";
+import { TemplateStudioModal } from "./components/TemplateStudioModal";
 import { TimelineBar } from "./components/TimelineBar";
+import { useEditorStore } from "./state/useEditorStore";
 
-type MobileTab = "clips" | "templates" | "timeline" | "inspector";
-type DesktopLeftTab = "clips" | "templates";
-
-const MOBILE_TABS: Array<{ id: MobileTab; label: string }> = [
-  { id: "clips", label: "Clips" },
-  { id: "templates", label: "Templates" },
-  { id: "timeline", label: "Timeline" },
-  { id: "inspector", label: "Inspector" },
-];
+type ToolPanel = "clips" | "audio" | "templates" | "ai" | "edit" | "adjust" | "text" | "stickers";
 
 export function App() {
+  const store = useEditorStore();
+  const { project, selection } = store;
+
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [selectedVisualIds, setSelectedVisualIds] = useState<string[]>([]);
-  const [selectedAudioId, setSelectedAudioId] = useState<string | undefined>(undefined);
-  const [templates] = useState<CutTemplatePreset[]>(CUT_TEMPLATE_PRESETS);
+  const [templates, setTemplates] = useState<CutTemplatePreset[]>([]);
 
   const [prompt, setPrompt] = useState("Gawa ka ng hype 15s TikTok edit with smooth zoom");
   const [mode, setMode] = useState<AiMode>("auto");
-  const [project, setProject] = useState<CutProject | null>(null);
-  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
 
-  const [mobileTab, setMobileTab] = useState<MobileTab>("clips");
-  const [desktopLeftTab, setDesktopLeftTab] = useState<DesktopLeftTab>("clips");
+  const [mobilePanel, setMobilePanel] = useState<ToolPanel | null>("ai");
+  const [desktopLeftTab, setDesktopLeftTab] = useState<"clips" | "audio" | "templates">("clips");
 
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isLoadingDemo, setIsLoadingDemo] = useState(false);
@@ -68,8 +71,10 @@ export function App() {
   const [bannerError, setBannerError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
 
+  const [templateModalTarget, setTemplateModalTarget] = useState<CutTemplatePreset | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
   const [anthropicKey, setAnthropicKey] = useState<string>(() => {
     try {
       return localStorage.getItem("cutflow_anthropic_key") ?? "";
@@ -93,27 +98,48 @@ export function App() {
   });
 
   const quickFileInputRef = useRef<HTMLInputElement | null>(null);
-
-  const assetsById = useMemo(
-    () => new Map(assets.map((a) => [a.id, a])),
-    [assets]
-  );
+  const assetsById = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets]);
 
   useEffect(() => {
     void (async () => {
       try {
-        const [h, media] = await Promise.all([fetchHealth(), fetchMedia()]);
+        const [h, media, tpls] = await Promise.all([
+          fetchHealth(),
+          fetchMedia(),
+          fetchTemplates(),
+        ]);
         setHealth(h);
         setAssets(media);
+        setTemplates(tpls);
         const visuals = media.filter((m) => m.kind !== "audio").map((m) => m.id);
         if (visuals.length > 0) setSelectedVisualIds(visuals);
-        const firstBeat = media.find((m) => m.kind === "audio");
-        if (firstBeat) setSelectedAudioId(firstBeat.id);
       } catch (err) {
         setBannerError(err instanceof Error ? err.message : "Unable to reach API server.");
       }
     })();
   }, []);
+
+  // Desktop & keyboard shortcuts (Undo/Redo/Split/Play-Pause)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) store.redo();
+        else store.undo();
+      } else if (e.code === "Space" && project) {
+        e.preventDefault();
+        setIsPlaying((p) => !p);
+      } else if (e.key.toLowerCase() === "s" && project) {
+        e.preventDefault();
+        store.splitAtPlayhead(currentTime);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [project, currentTime, store]);
 
   const handleSaveKeys = (keys: {
     anthropicKey: string;
@@ -126,13 +152,11 @@ export function App() {
     try {
       if (keys.anthropicKey) localStorage.setItem("cutflow_anthropic_key", keys.anthropicKey);
       else localStorage.removeItem("cutflow_anthropic_key");
-
       if (keys.anthropicWorkspaceId) {
         localStorage.setItem("cutflow_anthropic_workspace", keys.anthropicWorkspaceId);
       } else {
         localStorage.removeItem("cutflow_anthropic_workspace");
       }
-
       if (keys.geminiKey) localStorage.setItem("cutflow_gemini_key", keys.geminiKey);
       else localStorage.removeItem("cutflow_gemini_key");
     } catch {
@@ -140,7 +164,7 @@ export function App() {
     }
   };
 
-  const handleUploadFiles = async (files: File[]) => {
+  const handleUploadFiles = async (files: File[], autoAudioKind?: AudioCategory) => {
     setBannerError(null);
     setUploadProgress(5);
     try {
@@ -150,8 +174,12 @@ export function App() {
       if (addedVisuals.length > 0) {
         setSelectedVisualIds((prev) => Array.from(new Set([...prev, ...addedVisuals])));
       }
-      const addedAudio = added.find((a) => a.kind === "audio");
-      if (addedAudio) setSelectedAudioId(addedAudio.id);
+      if (autoAudioKind) {
+        const audio = added.find((a) => a.kind === "audio");
+        if (audio && project) {
+          store.addAudioTrack(audio, autoAudioKind, currentTime);
+        }
+      }
     } catch (err) {
       setBannerError(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -172,10 +200,6 @@ export function App() {
       setSelectedVisualIds((prev) =>
         Array.from(new Set([...prev, ...demoClips.map((c) => c.id)]))
       );
-      if (!selectedAudioId) {
-        const firstAudio = assets.find((a) => a.kind === "audio");
-        if (firstAudio) setSelectedAudioId(firstAudio.id);
-      }
     } catch (err) {
       setBannerError(err instanceof Error ? err.message : "Failed to load demo clips");
     } finally {
@@ -188,7 +212,6 @@ export function App() {
       await deleteMedia(id);
       setAssets((prev) => prev.filter((a) => a.id !== id));
       setSelectedVisualIds((prev) => prev.filter((vid) => vid !== id));
-      if (selectedAudioId === id) setSelectedAudioId(undefined);
     } catch (err) {
       setBannerError(err instanceof Error ? err.message : "Delete failed");
     }
@@ -216,7 +239,7 @@ export function App() {
         {
           prompt: activePrompt,
           assetIds: selectedVisualIds,
-          audioAssetId: selectedAudioId,
+          audioAssetId: project?.audioTracks?.[0]?.assetId,
           templateId: templateOverride?.id,
           aspectRatio: templateOverride?.defaultAspectRatio ?? project?.aspectRatio,
           targetDurationSec: templateOverride?.defaultDurationSec,
@@ -229,8 +252,7 @@ export function App() {
           geminiApiKey: geminiKey,
         }
       );
-      setProject(res.project);
-      setSelectedSlotId(res.project.clips[0]?.id ?? null);
+      store.loadProject(res.project);
       setCurrentTime(0);
       setWarnings(res.warnings);
       setIsPlaying(true);
@@ -241,64 +263,58 @@ export function App() {
     }
   };
 
-  const handleAspectChange = (aspectRatio: AspectRatio) => {
-    if (!project) return;
-    setProject({ ...project, aspectRatio });
+  const handleExtractAudio = async (videoAssetId: string) => {
+    setBannerError(null);
+    try {
+      const audioAsset = await extractAudioFromVideo(videoAssetId);
+      setAssets((prev) => [...prev, audioAsset]);
+      if (project) {
+        store.addAudioTrack(audioAsset, "bgm", 0);
+      }
+    } catch (err) {
+      setBannerError(err instanceof Error ? err.message : "Failed extracting audio");
+    }
   };
 
-  const handleUpdateSlot = (slotId: string, patch: Partial<ClipSlot>) => {
+  const handleAutoCaptions = async (videoAssetId: string) => {
     if (!project) return;
-    const nextClips = project.clips.map((c) => (c.id === slotId ? { ...c, ...patch } : c));
-    const layout = computeTimelineLayout({ clips: nextClips });
-    setProject({
-      ...project,
-      clips: nextClips,
-      targetDurationSec: layout.totalDurationSec,
-    });
+    setBannerError(null);
+    try {
+      const res = await transcribeMedia(videoAssetId, geminiKey);
+      store.updateOverlays([...project.overlays, ...res.overlays]);
+      if (res.overlays[0]) store.selectOverlay(res.overlays[0].id);
+    } catch (err) {
+      setBannerError(err instanceof Error ? err.message : "Auto-captions failed");
+    }
   };
 
-  const handleDeleteSlot = (slotId: string) => {
-    if (!project || project.clips.length <= 1) return;
-    const nextClips = project.clips
-      .filter((c) => c.id !== slotId)
-      .map((c, idx) => (idx === 0 ? { ...c, transitionIn: "cut" as const, transitionDurationSec: 0 } : c));
-    const layout = computeTimelineLayout({ clips: nextClips });
-    setProject({
-      ...project,
-      clips: nextClips,
-      targetDurationSec: layout.totalDurationSec,
-    });
-    setSelectedSlotId(nextClips[0]?.id ?? null);
-    setCurrentTime(0);
+  const handleSaveTemplate = async (name: string, tagline: string) => {
+    if (!project) return;
+    const blueprint = extractTemplateFromProject(project, name, tagline);
+    const saved = await saveCustomTemplate(blueprint);
+    setTemplates((prev) => [saved, ...prev.filter((t) => t.id !== saved.id)]);
   };
 
-  const handleMoveSlot = (slotId: string, dir: -1 | 1) => {
-    if (!project) return;
-    const idx = project.clips.findIndex((c) => c.id === slotId);
-    const targetIdx = idx + dir;
-    if (idx === -1 || targetIdx < 0 || targetIdx >= project.clips.length) return;
-    const copy = [...project.clips];
-    const [item] = copy.splice(idx, 1);
-    copy.splice(targetIdx, 0, item);
-    const normalized = copy.map((c, i) =>
-      i === 0 ? { ...c, transitionIn: "cut" as const, transitionDurationSec: 0 } : c
-    );
-    const layout = computeTimelineLayout({ clips: normalized });
-    setProject({
-      ...project,
-      clips: normalized,
-      targetDurationSec: layout.totalDurationSec,
-    });
-  };
-
-  const handleUpdateOverlays = (overlays: TextOverlay[]) => {
-    if (!project) return;
-    setProject({ ...project, overlays });
+  const handleDeleteTemplate = async (id: string) => {
+    await deleteCustomTemplate(id);
+    setTemplates((prev) => prev.filter((t) => t.id !== id));
   };
 
   const handleTimeChange = useCallback((t: number) => {
     setCurrentTime(t);
   }, []);
+
+  // Determine mobile inspector sub-section when a mobile tool button is active
+  const mobileInspectorSection: InspectorSection | undefined =
+    mobilePanel === "adjust"
+      ? "adjust"
+      : mobilePanel === "text"
+        ? "text"
+        : mobilePanel === "stickers"
+          ? "stickers"
+          : mobilePanel === "edit"
+            ? "clip"
+            : undefined;
 
   return (
     <div className="flex min-h-dvh flex-col bg-[#090b10] text-slate-100">
@@ -316,7 +332,7 @@ export function App() {
       />
 
       {/* Top Studio Bar */}
-      <header className="safe-top flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/90 bg-[#0d111a]/95 px-3 py-2 backdrop-blur sm:px-4">
+      <header className="safe-top flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/90 bg-[#0d111a]/95 px-3 py-1.5 backdrop-blur sm:px-4">
         <div className="flex items-center gap-2">
           <div className="flex size-8 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 to-rose-500 text-slate-950 shadow">
             <Scissors className="size-4" aria-hidden="true" />
@@ -324,33 +340,56 @@ export function App() {
           <div>
             <h1 className="text-sm font-extrabold tracking-tight text-white">CutFlow AI</h1>
             <p className="hidden text-[11px] text-slate-400 sm:block">
-              Auto Cut Templates · Phone & Laptop
+              CapCut-Style AI Studio · Phone &amp; Laptop
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2">
           {project && (
-            <div
-              role="group"
-              aria-label="Aspect ratio"
-              className="flex items-center rounded-xl border border-slate-800 bg-[#090b10] p-0.5 text-[11px] font-bold"
-            >
-              {(["9:16", "16:9", "1:1"] as AspectRatio[]).map((ratio) => (
+            <>
+              <div className="flex items-center gap-0.5 lg:hidden">
                 <button
-                  key={ratio}
                   type="button"
-                  onClick={() => handleAspectChange(ratio)}
-                  className={`rounded-lg px-2 py-1 transition ${
-                    project.aspectRatio === ratio
-                      ? "bg-cyan-400 text-slate-950"
-                      : "text-slate-400 hover:text-white"
-                  }`}
+                  disabled={!store.canUndo}
+                  onClick={store.undo}
+                  aria-label="Undo"
+                  className="rounded-lg border border-slate-800 bg-[#111520] p-1.5 text-slate-300 disabled:opacity-35"
                 >
-                  {ratio}
+                  <Undo2 className="size-3.5" aria-hidden="true" />
                 </button>
-              ))}
-            </div>
+                <button
+                  type="button"
+                  disabled={!store.canRedo}
+                  onClick={store.redo}
+                  aria-label="Redo"
+                  className="rounded-lg border border-slate-800 bg-[#111520] p-1.5 text-slate-300 disabled:opacity-35"
+                >
+                  <Redo2 className="size-3.5" aria-hidden="true" />
+                </button>
+              </div>
+
+              <div
+                role="group"
+                aria-label="Aspect ratio"
+                className="flex items-center rounded-xl border border-slate-800 bg-[#090b10] p-0.5 text-[11px] font-bold"
+              >
+                {(["9:16", "16:9", "1:1"] as AspectRatio[]).map((ratio) => (
+                  <button
+                    key={ratio}
+                    type="button"
+                    onClick={() => store.commit((p) => ({ ...p, aspectRatio: ratio }))}
+                    className={`rounded-lg px-2 py-1 transition ${
+                      project.aspectRatio === ratio
+                        ? "bg-cyan-400 text-slate-950"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    {ratio}
+                  </button>
+                ))}
+              </div>
+            </>
           )}
 
           <button
@@ -369,16 +408,16 @@ export function App() {
               setIsPlaying(false);
               setExportOpen(true);
             }}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-rose-500 to-amber-400 px-3 py-2 text-xs font-extrabold text-slate-950 shadow transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-rose-500 to-amber-400 px-3 py-1.5 text-xs font-extrabold text-slate-950 shadow transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
           >
             <Download className="size-4" aria-hidden="true" />
-            <span>Export MP4</span>
+            <span>Export</span>
           </button>
         </div>
       </header>
 
       {(bannerError || warnings.length > 0) && (
-        <div className="flex flex-col gap-1 border-b border-slate-800 bg-[#111520] px-3 py-2 text-xs">
+        <div className="flex flex-col gap-1 border-b border-slate-800 bg-[#111520] px-3 py-1.5 text-xs">
           {bannerError && (
             <div className="flex items-center justify-between gap-2 text-rose-300">
               <span>{bannerError}</span>
@@ -399,218 +438,370 @@ export function App() {
         </div>
       )}
 
-      {/* Adaptive Phone + Laptop Workspace Grid */}
-      <main className="safe-bottom grid flex-1 grid-cols-1 gap-3 p-2.5 sm:p-3 lg:grid-cols-[340px_minmax(0,1fr)_320px] lg:grid-rows-[minmax(0,1fr)_auto]">
-        {/* Left Pane (Desktop: Media & Templates; Mobile: Clips or Templates tab) */}
-        <aside
-          className={`flex flex-col gap-2.5 overflow-y-auto rounded-2xl border border-slate-800/80 bg-[#111520] p-3 lg:max-h-[calc(100dvh-16rem)] ${
-            mobileTab === "clips" || mobileTab === "templates" ? "block" : "hidden lg:flex"
-          }`}
-        >
-          {/* Desktop Left Switcher */}
+      {/* Main Studio Grid */}
+      <main className="safe-bottom grid flex-1 grid-cols-1 gap-2.5 p-2 sm:p-3 lg:grid-cols-[345px_minmax(0,1fr)_330px] lg:grid-rows-[minmax(0,1fr)_auto]">
+        {/* Desktop Left Library (Clips / Audio & SFX / Templates) */}
+        <aside className="hidden flex-col gap-2.5 overflow-y-auto rounded-2xl border border-slate-800/80 bg-[#111520] p-3 lg:flex lg:max-h-[calc(100dvh-19rem)]">
           <div
             role="tablist"
-            aria-label="Media and templates"
-            className="studio-tablist hidden border-b border-slate-800 pb-1 lg:flex"
+            aria-label="Studio library"
+            className="studio-tablist border-b border-slate-800 pb-1"
           >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={desktopLeftTab === "clips"}
-              onClick={() => setDesktopLeftTab("clips")}
-              className="studio-tab inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-300"
-            >
-              <Film className="size-3.5" aria-hidden="true" />
-              Clips & Audio
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={desktopLeftTab === "templates"}
-              onClick={() => setDesktopLeftTab("templates")}
-              className="studio-tab inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-300"
-            >
-              <LayoutTemplate className="size-3.5" aria-hidden="true" />
-              Cut Templates
-            </button>
+            {(
+              [
+                { id: "clips", label: "Clips", Icon: Film },
+                { id: "audio", label: "Music & SFX", Icon: Music2 },
+                { id: "templates", label: "Templates", Icon: LayoutTemplate },
+              ] as const
+            ).map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={desktopLeftTab === id}
+                onClick={() => setDesktopLeftTab(id)}
+                className="studio-tab inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-300"
+              >
+                <Icon className="size-3.5" aria-hidden="true" />
+                {label}
+              </button>
+            ))}
           </div>
 
-          <div
-            className={
-              mobileTab === "clips"
-                ? "block lg:hidden"
-                : "hidden"
-            }
-          >
+          {desktopLeftTab === "clips" && (
             <MediaBin
               assets={assets}
               selectedVisualIds={selectedVisualIds}
-              selectedAudioId={selectedAudioId}
               onToggleVisual={(id) =>
                 setSelectedVisualIds((prev) =>
                   prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
                 )
               }
-              onSelectAudio={setSelectedAudioId}
-              onUploadFiles={handleUploadFiles}
-              onLoadSamplePack={handleLoadDemo}
-              onDeleteAsset={handleDeleteAsset}
+              onAppendToTimeline={(asset) => store.appendVisualAsset(asset)}
+              onUploadFiles={(files) => void handleUploadFiles(files)}
+              onLoadSamplePack={() => void handleLoadDemo()}
+              onDeleteAsset={(id) => void handleDeleteAsset(id)}
               uploadProgress={uploadProgress}
               isLoadingSample={isLoadingDemo}
             />
-          </div>
+          )}
 
-          <div
-            className={
-              mobileTab === "templates"
-                ? "block lg:hidden"
-                : "hidden"
-            }
-          >
+          {desktopLeftTab === "audio" && (
+            <AudioDrawer
+              project={project}
+              assets={assets}
+              selectedAudioTrackId={selection.audioTrackId}
+              currentTime={currentTime}
+              onSelectAudioTrack={store.selectAudioTrack}
+              onAddAudioTrack={store.addAudioTrack}
+              onUpdateAudioTrack={store.updateAudioTrack}
+              onDeleteAudioTrack={store.deleteAudioTrack}
+              onUploadAudio={(files, kind) => handleUploadFiles(files, kind)}
+              onExtractAudio={handleExtractAudio}
+              onSnapCutsToBeats={() => store.snapCutsToBeats(assetsById)}
+            />
+          )}
+
+          {desktopLeftTab === "templates" && (
             <TemplateDrawer
               templates={templates}
               activeTemplateId={project?.templateId}
+              project={project}
               disabled={selectedVisualIds.length === 0 || isGenerating}
-              onApplyTemplate={(tpl) => {
+              onUseTemplateModal={(tpl) => setTemplateModalTarget(tpl)}
+              onAutoFillTemplate={(tpl) => {
                 const nextPrompt = `${tpl.name}: ${tpl.tagline}`;
                 setPrompt(nextPrompt);
                 void triggerAutoEdit(nextPrompt, tpl);
               }}
+              onSaveCurrentAsTemplate={handleSaveTemplate}
+              onDeleteCustomTemplate={handleDeleteTemplate}
+              onImportProjectJson={(imported) => store.loadProject(imported)}
             />
-          </div>
-
-          <div className="hidden lg:block">
-            {desktopLeftTab === "clips" ? (
-              <MediaBin
-                assets={assets}
-                selectedVisualIds={selectedVisualIds}
-                selectedAudioId={selectedAudioId}
-                onToggleVisual={(id) =>
-                  setSelectedVisualIds((prev) =>
-                    prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-                  )
-                }
-                onSelectAudio={setSelectedAudioId}
-                onUploadFiles={handleUploadFiles}
-                onLoadSamplePack={handleLoadDemo}
-                onDeleteAsset={handleDeleteAsset}
-                uploadProgress={uploadProgress}
-                isLoadingSample={isLoadingDemo}
-              />
-            ) : (
-              <TemplateDrawer
-                templates={templates}
-                activeTemplateId={project?.templateId}
-                disabled={selectedVisualIds.length === 0 || isGenerating}
-                onApplyTemplate={(tpl) => {
-                  const nextPrompt = `${tpl.name}: ${tpl.tagline}`;
-                  setPrompt(nextPrompt);
-                  void triggerAutoEdit(nextPrompt, tpl);
-                }}
-              />
-            )}
-          </div>
+          )}
         </aside>
 
-        {/* Center Stage: Preview + AI Prompt + Mobile Tab Switcher */}
-        <section className="order-first flex min-w-0 flex-col gap-2.5 lg:order-none">
+        {/* Center Stage: Preview Player + Desktop PromptBar */}
+        <section className="flex min-w-0 flex-col gap-2">
           <PreviewStage
             project={project}
             assetsById={assetsById}
             currentTime={currentTime}
             isPlaying={isPlaying}
+            selection={selection}
             onTimeChange={handleTimeChange}
             onPlayingChange={setIsPlaying}
-            onLoadDemo={handleLoadDemo}
+            onSelectOverlay={(id) => {
+              store.selectOverlay(id);
+              if (id) setMobilePanel("text");
+            }}
+            onSelectSticker={(id) => {
+              store.selectSticker(id);
+              if (id) setMobilePanel("stickers");
+            }}
+            onMoveOverlayPos={(id, xNorm, yNorm) => {
+              if (!project) return;
+              store.updateOverlays(
+                project.overlays.map((o) => (o.id === id ? { ...o, xNorm, yNorm } : o)),
+                false
+              );
+            }}
+            onMoveStickerPos={(id, xNorm, yNorm) => {
+              if (!project) return;
+              store.updateStickers(
+                (project.stickers || []).map((s) =>
+                  s.id === id ? { ...s, xNorm, yNorm } : s
+                ),
+                false
+              );
+            }}
+            onLoadDemo={() => void handleLoadDemo()}
             onQuickUpload={() => quickFileInputRef.current?.click()}
             isLoadingDemo={isLoadingDemo}
           />
 
-          <PromptBar
-            prompt={prompt}
-            onPromptChange={setPrompt}
-            onSubmit={(override) => void triggerAutoEdit(override)}
-            isGenerating={isGenerating}
-            disabled={selectedVisualIds.length === 0}
-            mode={mode}
-            onModeChange={setMode}
-            hasProject={Boolean(project)}
-          />
-
-          {/* Mobile Single-Row Accessible Tablist */}
-          <div
-            role="tablist"
-            aria-label="Mobile studio panels"
-            className="studio-tablist rounded-2xl border border-slate-800/80 bg-[#111520] px-2 pt-1 lg:hidden"
-            onKeyDown={(e) => {
-              const idx = MOBILE_TABS.findIndex((t) => t.id === mobileTab);
-              if (e.key === "ArrowRight") {
-                const next = MOBILE_TABS[(idx + 1) % MOBILE_TABS.length];
-                setMobileTab(next.id);
-              } else if (e.key === "ArrowLeft") {
-                const prev = MOBILE_TABS[(idx - 1 + MOBILE_TABS.length) % MOBILE_TABS.length];
-                setMobileTab(prev.id);
-              }
-            }}
-          >
-            {MOBILE_TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                role="tab"
-                aria-selected={mobileTab === t.id}
-                onClick={(e) => {
-                  setMobileTab(t.id);
-                  e.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" });
-                }}
-                className="studio-tab px-3.5 py-2 text-xs font-bold text-slate-300"
-              >
-                {t.label}
-              </button>
-            ))}
+          <div className="hidden lg:block">
+            <PromptBar
+              prompt={prompt}
+              onPromptChange={setPrompt}
+              onSubmit={(override) => void triggerAutoEdit(override)}
+              isGenerating={isGenerating}
+              disabled={selectedVisualIds.length === 0}
+              mode={mode}
+              onModeChange={setMode}
+              hasProject={Boolean(project)}
+            />
           </div>
         </section>
 
-        {/* Right Pane: Slot & Text Inspector */}
-        <aside
-          className={`overflow-y-auto rounded-2xl border border-slate-800/80 bg-[#111520] p-3 lg:max-h-[calc(100dvh-16rem)] ${
-            mobileTab === "inspector" ? "block" : "hidden lg:block"
-          }`}
-        >
-          <div className="mb-2.5 flex items-center gap-1.5 text-xs font-bold text-slate-200">
-            <SlidersHorizontal className="size-3.5 text-cyan-400" aria-hidden="true" />
-            <span>Slot & Overlay Inspector</span>
-          </div>
-          <SlotInspector
-            project={project}
-            selectedSlotId={selectedSlotId}
-            assetsById={assetsById}
-            onUpdateSlot={handleUpdateSlot}
-            onDeleteSlot={handleDeleteSlot}
-            onUpdateOverlays={handleUpdateOverlays}
-          />
+        {/* Desktop Right Contextual Inspector */}
+        <aside className="hidden overflow-y-auto rounded-2xl border border-slate-800/80 bg-[#111520] p-3 lg:block lg:max-h-[calc(100dvh-19rem)]">
+          {selection.audioTrackId && project ? (
+            <AudioDrawer
+              project={project}
+              assets={assets}
+              selectedAudioTrackId={selection.audioTrackId}
+              currentTime={currentTime}
+              onSelectAudioTrack={store.selectAudioTrack}
+              onAddAudioTrack={store.addAudioTrack}
+              onUpdateAudioTrack={store.updateAudioTrack}
+              onDeleteAudioTrack={store.deleteAudioTrack}
+              onUploadAudio={(files, kind) => handleUploadFiles(files, kind)}
+              onExtractAudio={handleExtractAudio}
+              onSnapCutsToBeats={() => store.snapCutsToBeats(assetsById)}
+            />
+          ) : (
+            <SlotInspector
+              project={project}
+              selection={selection}
+              assets={assets}
+              assetsById={assetsById}
+              currentTime={currentTime}
+              onUpdateSlot={store.updateSlot}
+              onReplaceSlotAsset={store.replaceSlotAsset}
+              onDuplicateSlot={store.duplicateSlot}
+              onDeleteSlot={store.deleteSlot}
+              onUpdateOverlays={store.updateOverlays}
+              onUpdateStickers={store.updateStickers}
+              onSelectOverlay={store.selectOverlay}
+              onSelectSticker={store.selectSticker}
+              onAutoCaptions={handleAutoCaptions}
+            />
+          )}
         </aside>
 
-        {/* Bottom Pane: Visual Timeline */}
-        <section
-          className={`lg:col-span-3 ${
-            mobileTab === "timeline" ? "block" : "hidden lg:block"
-          }`}
-        >
+        {/* Always-Visible Multi-Track Timeline (Both Phone & Laptop!) */}
+        <section className="lg:col-span-3">
           <TimelineBar
             project={project}
             assetsById={assetsById}
             currentTime={currentTime}
-            selectedSlotId={selectedSlotId}
-            onSelectSlot={setSelectedSlotId}
+            selection={selection}
+            canUndo={store.canUndo}
+            canRedo={store.canRedo}
+            onUndo={store.undo}
+            onRedo={store.redo}
+            onSplitAtPlayhead={() => store.splitAtPlayhead(currentTime)}
+            onDuplicateSlot={store.duplicateSlot}
+            onMoveSlot={store.moveSlot}
+            onUpdateSlot={store.updateSlot}
+            onSelectSlot={(id) => {
+              store.selectSlot(id);
+              setMobilePanel("edit");
+            }}
+            onSelectAudioTrack={(id) => {
+              store.selectAudioTrack(id);
+              setMobilePanel("audio");
+            }}
+            onSelectOverlay={(id) => {
+              store.selectOverlay(id);
+              setMobilePanel("text");
+            }}
+            onSelectSticker={(id) => {
+              store.selectSticker(id);
+              setMobilePanel("stickers");
+            }}
             onSeek={(sec) => {
               setIsPlaying(false);
               setCurrentTime(sec);
             }}
-            onMoveSlot={handleMoveSlot}
+            onSnapBeats={() => store.snapCutsToBeats(assetsById)}
+            onOpenAddClip={() => {
+              setDesktopLeftTab("clips");
+              setMobilePanel("clips");
+            }}
+            onOpenAddMusic={() => {
+              setDesktopLeftTab("audio");
+              setMobilePanel("audio");
+            }}
+            onAddTextShortcut={() => {
+              setMobilePanel("text");
+            }}
           />
         </section>
+
+        {/* Mobile CapCut Bottom Contextual Toolbar + Tool Drawer */}
+        <section className="flex flex-col gap-2 lg:hidden">
+          <div
+            role="tablist"
+            aria-label="CapCut mobile tools"
+            className="studio-tablist rounded-2xl border border-slate-800/90 bg-[#111520] px-1.5 pt-1"
+          >
+            {(
+              [
+                { id: "ai", label: "AI Magic", Icon: Sparkles },
+                { id: "clips", label: "Clips", Icon: Film },
+                { id: "audio", label: "Audio", Icon: Music2 },
+                { id: "templates", label: "Templates", Icon: LayoutTemplate },
+                { id: "edit", label: "Edit Clip", Icon: Scissors },
+                { id: "adjust", label: "Adjust", Icon: Sliders },
+                { id: "text", label: "Text", Icon: Type },
+                { id: "stickers", label: "Stickers", Icon: Sticker },
+              ] as const
+            ).map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={mobilePanel === id}
+                onClick={(e) => {
+                  setMobilePanel((curr) => (curr === id ? null : id));
+                  e.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" });
+                }}
+                className="studio-tab inline-flex flex-col items-center gap-0.5 px-3 py-1.5 text-[10px] font-bold text-slate-300"
+              >
+                <Icon className="size-4" aria-hidden="true" />
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+
+          {mobilePanel && (
+            <div className="max-h-[38dvh] overflow-y-auto rounded-2xl border border-slate-800/80 bg-[#111520] p-3">
+              {mobilePanel === "ai" && (
+                <PromptBar
+                  prompt={prompt}
+                  onPromptChange={setPrompt}
+                  onSubmit={(override) => void triggerAutoEdit(override)}
+                  isGenerating={isGenerating}
+                  disabled={selectedVisualIds.length === 0}
+                  mode={mode}
+                  onModeChange={setMode}
+                  hasProject={Boolean(project)}
+                />
+              )}
+
+              {mobilePanel === "clips" && (
+                <MediaBin
+                  assets={assets}
+                  selectedVisualIds={selectedVisualIds}
+                  onToggleVisual={(id) =>
+                    setSelectedVisualIds((prev) =>
+                      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+                    )
+                  }
+                  onAppendToTimeline={(asset) => store.appendVisualAsset(asset)}
+                  onUploadFiles={(files) => void handleUploadFiles(files)}
+                  onLoadSamplePack={() => void handleLoadDemo()}
+                  onDeleteAsset={(id) => void handleDeleteAsset(id)}
+                  uploadProgress={uploadProgress}
+                  isLoadingSample={isLoadingDemo}
+                />
+              )}
+
+              {mobilePanel === "audio" && (
+                <AudioDrawer
+                  project={project}
+                  assets={assets}
+                  selectedAudioTrackId={selection.audioTrackId}
+                  currentTime={currentTime}
+                  onSelectAudioTrack={store.selectAudioTrack}
+                  onAddAudioTrack={store.addAudioTrack}
+                  onUpdateAudioTrack={store.updateAudioTrack}
+                  onDeleteAudioTrack={store.deleteAudioTrack}
+                  onUploadAudio={(files, kind) => handleUploadFiles(files, kind)}
+                  onExtractAudio={handleExtractAudio}
+                  onSnapCutsToBeats={() => store.snapCutsToBeats(assetsById)}
+                />
+              )}
+
+              {mobilePanel === "templates" && (
+                <TemplateDrawer
+                  templates={templates}
+                  activeTemplateId={project?.templateId}
+                  project={project}
+                  disabled={selectedVisualIds.length === 0 || isGenerating}
+                  onUseTemplateModal={(tpl) => setTemplateModalTarget(tpl)}
+                  onAutoFillTemplate={(tpl) => {
+                    const nextPrompt = `${tpl.name}: ${tpl.tagline}`;
+                    setPrompt(nextPrompt);
+                    void triggerAutoEdit(nextPrompt, tpl);
+                  }}
+                  onSaveCurrentAsTemplate={handleSaveTemplate}
+                  onDeleteCustomTemplate={handleDeleteTemplate}
+                  onImportProjectJson={(imported) => store.loadProject(imported)}
+                />
+              )}
+
+              {(mobilePanel === "edit" ||
+                mobilePanel === "adjust" ||
+                mobilePanel === "text" ||
+                mobilePanel === "stickers") && (
+                <SlotInspector
+                  project={project}
+                  selection={selection}
+                  activeSection={mobileInspectorSection}
+                  assets={assets}
+                  assetsById={assetsById}
+                  currentTime={currentTime}
+                  onUpdateSlot={store.updateSlot}
+                  onReplaceSlotAsset={store.replaceSlotAsset}
+                  onDuplicateSlot={store.duplicateSlot}
+                  onDeleteSlot={store.deleteSlot}
+                  onUpdateOverlays={store.updateOverlays}
+                  onUpdateStickers={store.updateStickers}
+                  onSelectOverlay={store.selectOverlay}
+                  onSelectSticker={store.selectSticker}
+                  onAutoCaptions={handleAutoCaptions}
+                />
+              )}
+            </div>
+          )}
+        </section>
       </main>
+
+      <TemplateStudioModal
+        open={Boolean(templateModalTarget)}
+        template={templateModalTarget}
+        assets={assets}
+        selectedAudioId={project?.audioTracks?.[0]?.assetId}
+        onClose={() => setTemplateModalTarget(null)}
+        onApplyProject={(built) => {
+          store.loadProject(built);
+          setCurrentTime(0);
+          setIsPlaying(true);
+        }}
+      />
 
       <ExportModal
         open={exportOpen}

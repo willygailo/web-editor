@@ -6,6 +6,9 @@ import type {
   MediaAsset,
   RenderJob,
   RenderRequest,
+  SaveTemplateRequest,
+  TranscribeResponse,
+  WaveformResponse,
 } from "@cutflow/shared";
 
 export async function fetchHealth(): Promise<HealthResponse> {
@@ -76,11 +79,80 @@ export async function deleteMedia(id: string): Promise<void> {
   }
 }
 
+export async function fetchWaveform(
+  assetId: string,
+  bins = 100
+): Promise<WaveformResponse> {
+  const res = await fetch(
+    `/api/media/${encodeURIComponent(assetId)}/waveform?bins=${bins}`
+  );
+  if (!res.ok) throw new Error("Failed to load audio waveform");
+  return res.json();
+}
+
+export async function extractAudioFromVideo(assetId: string): Promise<MediaAsset> {
+  const res = await fetch(
+    `/api/media/${encodeURIComponent(assetId)}/extract-audio`,
+    { method: "POST" }
+  );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error || "Failed to extract audio");
+  }
+  const data = (await res.json()) as { asset: MediaAsset };
+  return data.asset;
+}
+
+export async function transcribeMedia(
+  assetId: string,
+  geminiKey?: string
+): Promise<TranscribeResponse> {
+  const headers: Record<string, string> = {};
+  if (geminiKey?.trim()) {
+    headers["x-gemini-api-key"] = geminiKey.trim();
+  }
+  const res = await fetch(
+    `/api/media/${encodeURIComponent(assetId)}/transcribe`,
+    { method: "POST", headers }
+  );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error || "Failed to generate captions");
+  }
+  return res.json();
+}
+
 export async function fetchTemplates(): Promise<CutTemplatePreset[]> {
   const res = await fetch("/api/templates");
   if (!res.ok) throw new Error("Failed to load templates");
   const data = (await res.json()) as { templates: CutTemplatePreset[] };
   return data.templates;
+}
+
+export async function saveCustomTemplate(
+  req: SaveTemplateRequest
+): Promise<CutTemplatePreset> {
+  const res = await fetch("/api/templates", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error || "Failed to save template");
+  }
+  const data = (await res.json()) as { template: CutTemplatePreset };
+  return data.template;
+}
+
+export async function deleteCustomTemplate(id: string): Promise<void> {
+  const res = await fetch(`/api/templates/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error || "Failed to delete template");
+  }
 }
 
 export interface UserAiKeys {

@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import type { MediaKind, SilenceRange } from "@cutflow/shared";
 import { runProcess } from "./exec.js";
 
@@ -264,4 +265,74 @@ export async function probeMediaFile(
     energyPeaksSec,
     silenceRanges,
   };
+}
+
+export async function extractWaveformPeaks(
+  filePath: string,
+  cachePath: string,
+  bins = 120
+): Promise<number[]> {
+  if (fs.existsSync(cachePath)) {
+    try {
+      const cached = JSON.parse(fs.readFileSync(cachePath, "utf8")) as number[];
+      if (Array.isArray(cached) && cached.length > 0) return cached;
+    } catch {
+      // regenerate
+    }
+  }
+
+  const res = await runProcess(
+    "ffmpeg",
+    ["-i", filePath, "-vn", "-ac", "1", "-ar", "8000", "-f", "s16le", "pipe:1"],
+    { timeoutMs: 15_000 }
+  );
+
+  if (res.code !== 0 || res.stdoutBuffer.length < 4) {
+    return Array.from({ length: bins }, () => 0.2);
+  }
+
+  const pcm = res.stdoutBuffer;
+  const totalSamples = Math.floor(pcm.length / 2);
+  const bucketSize = Math.max(1, Math.floor(totalSamples / bins));
+  const rawPeaks: number[] = [];
+
+  for (let b = 0; b < bins; b++) {
+    const start = b * bucketSize;
+    const end = Math.min(totalSamples, start + bucketSize);
+    if (start >= totalSamples) {
+      rawPeaks.push(0.08);
+      continue;
+    }
+    let maxAbs = 0;
+    for (let i = start; i < end; i++) {
+      const val = Math.abs(pcm.readInt16LE(i * 2)) / 32768;
+      if (val > maxAbs) maxAbs = val;
+    }
+    rawPeaks.push(maxAbs);
+  }
+
+  const globalMax = Math.max(0.05, ...rawPeaks);
+  const normalized = rawPeaks.map((v) =>
+    Number(Math.max(0.06, Math.min(1, v / globalMax)).toFixed(3))
+  );
+
+  try {
+    fs.writeFileSync(cachePath, JSON.stringify(normalized));
+  } catch {
+    // ignore cache write issues
+  }
+
+  return normalized;
+}
+
+export async function extractAudioFromVideo(
+  videoPath: string,
+  outAudioPath: string
+): Promise<boolean> {
+  const res = await runProcess(
+    "ffmpeg",
+    ["-y", "-i", videoPath, "-vn", "-c:a", "aac", "-b:a", "160k", outAudioPath],
+    { timeoutMs: 30_000 }
+  );
+  return res.code === 0 && fs.existsSync(outAudioPath);
 }

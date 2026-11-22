@@ -78,5 +78,76 @@ describe("End-to-End Fastify API (Sample Pack -> Auto-Edit -> FFmpeg MP4 Render)
     expect(dlRes.headers["content-type"]).toBe("video/mp4");
     expect(dlRes.rawPayload.length).toBeGreaterThan(5000);
     expect(dlRes.rawPayload.subarray(4, 8).toString("ascii")).toBe("ftyp");
+
+    // V2 endpoints: waveform, extract-audio, transcribe, and custom templates CRUD
+    const waveRes = await app.inject({
+      method: "GET",
+      url: "/api/media/builtin-beat-hype-128/waveform?bins=60",
+    });
+    expect(waveRes.statusCode).toBe(200);
+    const waveData = waveRes.json() as { peaks: number[] };
+    expect(waveData.peaks.length).toBe(60);
+
+    const extractRes = await app.inject({
+      method: "POST",
+      url: `/api/media/${sampleData.assets[0].id}/extract-audio`,
+    });
+    expect(extractRes.statusCode).toBe(200);
+    const extracted = extractRes.json() as { asset: { id: string; kind: string } };
+    expect(extracted.asset.kind).toBe("audio");
+
+    const transcribeRes = await app.inject({
+      method: "POST",
+      url: `/api/media/${sampleData.assets[0].id}/transcribe`,
+    });
+    expect(transcribeRes.statusCode).toBe(200);
+    const transcribed = transcribeRes.json() as { overlays: unknown[] };
+    expect(transcribed.overlays.length).toBeGreaterThanOrEqual(1);
+
+    const saveTplRes = await app.inject({
+      method: "POST",
+      url: "/api/templates",
+      payload: {
+        name: "My Viral Reel",
+        tagline: "Saved custom cut template",
+        badge: "Custom",
+        defaultAspectRatio: "9:16",
+        defaultDurationSec: 8,
+        bpm: 128,
+        minClipSec: 0.8,
+        maxClipSec: 2.0,
+        motions: ["punch-zoom"],
+        transitions: ["flash-white"],
+        transitionDurationSec: 0.2,
+        filter: "vivid",
+        overlayStyle: "bold-hook",
+        defaultHookText: "CUSTOM HOOK",
+        slots: [
+          {
+            durationSec: 1.5,
+            motion: "punch-zoom",
+            transitionIn: "cut",
+            transitionDurationSec: 0,
+            filter: "vivid",
+            speed: 1,
+            label: "Intro",
+          },
+        ],
+      },
+    });
+    expect(saveTplRes.statusCode).toBe(200);
+    const savedTpl = saveTplRes.json() as { template: { id: string; isCustom: boolean } };
+    expect(savedTpl.template.isCustom).toBe(true);
+
+    const listTplRes = await app.inject({ method: "GET", url: "/api/templates" });
+    expect(listTplRes.statusCode).toBe(200);
+    const tplList = listTplRes.json() as { templates: Array<{ id: string }> };
+    expect(tplList.templates.some((t) => t.id === savedTpl.template.id)).toBe(true);
+
+    const delTplRes = await app.inject({
+      method: "DELETE",
+      url: `/api/templates/${savedTpl.template.id}`,
+    });
+    expect(delTplRes.statusCode).toBe(200);
   }, 60_000);
 });

@@ -1,13 +1,12 @@
 import { useRef, useState } from "react";
-import { Check, Film, Music2, Sparkles, Trash2, Upload } from "lucide-react";
+import { Check, Film, Plus, Sparkles, Trash2, Upload } from "lucide-react";
 import type { MediaAsset } from "@cutflow/shared";
 
 interface MediaBinProps {
   assets: MediaAsset[];
   selectedVisualIds: string[];
-  selectedAudioId?: string;
   onToggleVisual: (id: string) => void;
-  onSelectAudio: (id?: string) => void;
+  onAppendToTimeline: (asset: MediaAsset) => void;
   onUploadFiles: (files: File[]) => void;
   onLoadSamplePack: () => void;
   onDeleteAsset: (id: string) => void;
@@ -18,9 +17,8 @@ interface MediaBinProps {
 export function MediaBin({
   assets,
   selectedVisualIds,
-  selectedAudioId,
   onToggleVisual,
-  onSelectAudio,
+  onAppendToTimeline,
   onUploadFiles,
   onLoadSamplePack,
   onDeleteAsset,
@@ -31,7 +29,6 @@ export function MediaBin({
   const [dragging, setDragging] = useState(false);
 
   const visualAssets = assets.filter((a) => a.kind !== "audio");
-  const audioAssets = assets.filter((a) => a.kind === "audio");
 
   return (
     <div className="panel-container flex flex-col gap-3">
@@ -72,7 +69,7 @@ export function MediaBin({
             className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-cyan-500/15 px-3 py-2 text-xs font-semibold text-cyan-200 ring-1 ring-cyan-400/40 transition hover:bg-cyan-500/25"
           >
             <Upload className="size-4" aria-hidden="true" />
-            <span>Upload Videos / Photos</span>
+            <span>Upload Clips</span>
           </button>
           <button
             type="button"
@@ -88,7 +85,7 @@ export function MediaBin({
         {uploadProgress !== null && (
           <div className="flex flex-col gap-1">
             <div className="flex justify-between text-[11px] text-cyan-300">
-              <span>Uploading & analyzing beats...</span>
+              <span>Uploading & analyzing...</span>
               <span>{uploadProgress}%</span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
@@ -105,14 +102,13 @@ export function MediaBin({
         <div className="mb-2 flex items-center justify-between text-xs font-semibold text-slate-300">
           <span className="inline-flex items-center gap-1.5">
             <Film className="size-3.5 text-cyan-400" aria-hidden="true" />
-            Visual Clips ({selectedVisualIds.length}/{visualAssets.length} selected)
+            Clips ({selectedVisualIds.length}/{visualAssets.length} for AI)
           </span>
         </div>
 
         {visualAssets.length === 0 ? (
           <p className="rounded-xl bg-[#090b10] p-3 text-xs text-slate-400">
-            No clips yet. Tap <strong>Upload Videos / Photos</strong> or{" "}
-            <strong>Demo Clips</strong> to start.
+            No clips yet. Tap <strong>Upload Clips</strong> or <strong>Demo Clips</strong> to start.
           </p>
         ) : (
           <div className="media-grid">
@@ -163,61 +159,32 @@ export function MediaBin({
                     </div>
                   </button>
 
-                  {!asset.isBuiltIn && (
+                  <div className="card-reveal-actions absolute top-1.5 right-1.5 flex gap-1">
                     <button
                       type="button"
-                      onClick={() => onDeleteAsset(asset.id)}
-                      aria-label={`Delete ${asset.originalName}`}
-                      className="absolute top-1.5 right-1.5 inline-flex items-center justify-center rounded-full bg-slate-950/80 p-1 text-slate-300 hover:text-rose-400"
+                      onClick={() => onAppendToTimeline(asset)}
+                      aria-label={`Add ${asset.originalName} to timeline`}
+                      title="Add directly to timeline"
+                      className="inline-flex items-center justify-center rounded-full bg-cyan-400 p-1 text-slate-950 shadow"
                     >
-                      <Trash2 className="size-3.5" aria-hidden="true" />
+                      <Plus className="size-3" aria-hidden="true" />
                     </button>
-                  )}
+                    {!asset.isBuiltIn && (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteAsset(asset.id)}
+                        aria-label={`Delete ${asset.originalName}`}
+                        className="inline-flex items-center justify-center rounded-full bg-slate-950/85 p-1 text-slate-300 hover:text-rose-400"
+                      >
+                        <Trash2 className="size-3" aria-hidden="true" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}
           </div>
         )}
-      </div>
-
-      <div>
-        <div className="mb-2 flex items-center justify-between text-xs font-semibold text-slate-300">
-          <span className="inline-flex items-center gap-1.5">
-            <Music2 className="size-3.5 text-rose-400" aria-hidden="true" />
-            Beat / BGM Track
-          </span>
-          {selectedAudioId && (
-            <button
-              type="button"
-              onClick={() => onSelectAudio(undefined)}
-              className="text-[11px] font-medium text-slate-400 hover:text-slate-200"
-            >
-              No BGM
-            </button>
-          )}
-        </div>
-        <div className="flex flex-col gap-1.5">
-          {audioAssets.map((audio) => {
-            const active = selectedAudioId === audio.id;
-            return (
-              <button
-                key={audio.id}
-                type="button"
-                onClick={() => onSelectAudio(active ? undefined : audio.id)}
-                className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-xs transition ${
-                  active
-                    ? "border-rose-400/70 bg-rose-500/15 text-rose-100"
-                    : "border-slate-800 bg-[#090b10] text-slate-300 hover:border-slate-700"
-                }`}
-              >
-                <span className="truncate font-medium">{audio.originalName}</span>
-                <span className="shrink-0 text-[11px] text-slate-400">
-                  {audio.beatMarkersSec.length} beats · {audio.durationSec.toFixed(0)}s
-                </span>
-              </button>
-            );
-          })}
-        </div>
       </div>
     </div>
   );

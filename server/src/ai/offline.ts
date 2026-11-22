@@ -6,6 +6,7 @@ import {
   type AspectRatio,
   type AutoEditRequest,
   type ClipSlot,
+  type CutProjectInput,
   type CutProject,
   type CutTemplatePreset,
   type MediaAsset,
@@ -137,7 +138,9 @@ function pickDefaultAudio(
     if (found?.kind === "audio") return found;
   }
 
-  const audios = Array.from(assetsById.values()).filter((a) => a.kind === "audio");
+  const audios = Array.from(assetsById.values()).filter(
+    (a) => a.kind === "audio" && a.audioCategory !== "sfx"
+  );
   if (audios.length === 0) return undefined;
 
   // Prefer user-uploaded audio first if they uploaded one
@@ -262,6 +265,7 @@ export function generateOfflineCutProject(
       filter: preset.filter,
       muteOriginalAudio: Boolean(audioAsset),
       volume: audioAsset ? 0 : 1,
+      reversed: false,
       label: `${asset.originalName} (#${slotIndex + 1})`,
     });
 
@@ -281,10 +285,29 @@ export function generateOfflineCutProject(
       endSec: Math.min(layout.totalDurationSec, Math.max(2.2, Math.min(3.5, layout.totalDurationSec * 0.4))),
       position: preset.id === "chill-vlog" ? "bottom" : "center",
       style: preset.overlayStyle,
+      scale: 1,
+      rotationDeg: 0,
+      animation: "pop",
     });
   }
 
-  const draft: CutProject = {
+  const audioTrackObj = audioAsset
+    ? {
+        id: "aud-bgm-1",
+        kind: "bgm" as const,
+        assetId: audioAsset.id,
+        title: audioAsset.originalName,
+        timelineStartSec: 0,
+        durationSec: layout.totalDurationSec,
+        startOffsetSec: 0,
+        volume: 0.85,
+        fadeInSec: 0.2,
+        fadeOutSec: 0.7,
+        beatMarkersSec: audioAsset.beatMarkersSec,
+      }
+    : undefined;
+
+  const draft: CutProjectInput = {
     id: prev?.id ?? crypto.randomUUID(),
     title: hookText ? `${preset.name}: ${hookText.slice(0, 28)}` : preset.name,
     templateId: preset.id,
@@ -296,17 +319,9 @@ export function generateOfflineCutProject(
     targetDurationSec: layout.totalDurationSec,
     clips,
     overlays,
-    audioTrack: audioAsset
-      ? {
-          assetId: audioAsset.id,
-          title: audioAsset.originalName,
-          startOffsetSec: 0,
-          volume: 0.85,
-          fadeInSec: 0.2,
-          fadeOutSec: 0.7,
-          beatMarkersSec: audioAsset.beatMarkersSec,
-        }
-      : undefined,
+    stickers: [],
+    audioTrack: audioTrackObj,
+    audioTracks: audioTrackObj ? [audioTrackObj] : [],
   };
 
   return sanitizeCutProject(draft, assetsById);

@@ -2,26 +2,47 @@
 node_modules/
 .pnpm-store/
 
-# Build & TypeScript outputs
+# Build, lint & cache outputs
 dist/
 build/
 *.tsbuildinfo
 .vite/
+.turbo/
+.eslintcache
 
 # Environment & Secrets (keep .env.example tracked)
 .env
 .env.*
 !.env.example
 
-# Runtime media storage, proxies, and rendered exports
+# Runtime media storage, proxies, built-in audio/stickers, and metadata
 data/
 uploads/
 renders/
+proxies/
+builtins/
+assets.json
+templates.json
+*.wave-*.json
+sticker-*.svg
+
+# User media, voiceover recordings, subtitles & exported templates
 *.mp4
 *.mov
+*.m4v
+*.mkv
+*.avi
+*.webm
 *.m4a
 *.wav
+*.mp3
+*.aac
+*.ogg
+*.flac
 *.ass
+*.srt
+*.vtt
+*.cutflow.json
 
 # Tests & Coverage
 coverage/
@@ -32,9 +53,11 @@ coverage/
 npm-debug.log*
 pnpm-debug.log*
 
-# OS & Editor files
+# OS, temporary & Editor files
 .DS_Store
 Thumbs.db
+*.tmp
+*.bak
 .vscode/*
 !.vscode/extensions.json
 .idea/

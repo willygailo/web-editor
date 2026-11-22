@@ -3,7 +3,9 @@ import {
   AspectRatioSchema,
   CutProjectSchema,
   MediaAssetSchema,
+  TextOverlaySchema,
 } from "./edl.js";
+import { CutTemplatePresetSchema } from "./templates.js";
 
 export const AutoEditRequestSchema = z.object({
   prompt: z.string().min(1).max(600),
@@ -63,3 +65,23 @@ export const UploadMediaResponseSchema = z.object({
   assets: z.array(MediaAssetSchema),
 });
 export type UploadMediaResponse = z.infer<typeof UploadMediaResponseSchema>;
+
+export const WaveformResponseSchema = z.object({
+  assetId: z.string(),
+  durationSec: z.number(),
+  peaks: z.array(z.number()),
+});
+export type WaveformResponse = z.infer<typeof WaveformResponseSchema>;
+
+export const SaveTemplateRequestSchema = CutTemplatePresetSchema.omit({
+  id: true,
+}).extend({
+  id: z.string().optional(),
+});
+export type SaveTemplateRequest = z.infer<typeof SaveTemplateRequestSchema>;
+
+export const TranscribeResponseSchema = z.object({
+  overlays: z.array(TextOverlaySchema),
+  source: z.enum(["gemini", "offline"]),
+});
+export type TranscribeResponse = z.infer<typeof TranscribeResponseSchema>;

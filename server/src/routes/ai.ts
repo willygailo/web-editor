@@ -1,16 +1,38 @@
 import type { FastifyInstance } from "fastify";
-import { AutoEditRequestSchema, CUT_TEMPLATE_PRESETS } from "@cutflow/shared";
+import { AutoEditRequestSchema, SaveTemplateRequestSchema } from "@cutflow/shared";
 import type { ServerConfig } from "../config.js";
 import type { MediaStore } from "../media/store.js";
+import type { TemplatesStore } from "../media/templatesStore.js";
 import { runAutoEditDirector } from "../ai/director.js";
 
 export function registerAiRoutes(
   app: FastifyInstance,
   config: ServerConfig,
-  store: MediaStore
+  store: MediaStore,
+  templatesStore: TemplatesStore
 ): void {
   app.get("/api/templates", async () => {
-    return { templates: CUT_TEMPLATE_PRESETS };
+    return { templates: templatesStore.listAll() };
+  });
+
+  app.post("/api/templates", async (request, reply) => {
+    const parsed = SaveTemplateRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: "Invalid template payload",
+        details: parsed.error.flatten(),
+      });
+    }
+    const saved = templatesStore.saveCustom(parsed.data);
+    return { template: saved };
+  });
+
+  app.delete<{ Params: { id: string } }>("/api/templates/:id", async (request, reply) => {
+    const ok = templatesStore.removeCustom(request.params.id);
+    if (!ok) {
+      return reply.status(404).send({ error: "Custom template not found" });
+    }
+    return { ok: true };
   });
 
   app.post("/api/projects/auto-edit", async (request, reply) => {

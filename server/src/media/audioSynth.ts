@@ -152,6 +152,7 @@ export async function ensureBuiltinAudioBeats(
       filename: path.basename(finalPath),
       originalName: spec.title,
       kind: "audio",
+      audioCategory: "bgm",
       mimeType: finalPath.endsWith(".m4a") ? "audio/mp4" : "audio/wav",
       url: `/api/media/${spec.id}/stream`,
       durationSec: spec.durationSec,
@@ -163,6 +164,141 @@ export async function ensureBuiltinAudioBeats(
     };
 
     store.upsert(asset, finalPath);
+  }
+
+  await ensureBuiltinSfx(builtinsDir, store);
+}
+
+interface SfxSpec {
+  id: string;
+  title: string;
+  durationSec: number;
+  synth: (t: number, i: number, durationSec: number) => number;
+}
+
+const BUILTIN_SFX: SfxSpec[] = [
+  {
+    id: "builtin-sfx-whoosh",
+    title: "SFX: Transition Whoosh",
+    durationSec: 0.7,
+    synth: (t, i, dur) => {
+      const env = Math.sin((t / dur) * Math.PI);
+      const noise = ((Math.sin(i * 12.9898) * 43758.5453) % 1) * 2 - 1;
+      const sweep = Math.sin(2 * Math.PI * (180 + 500 * (t / dur)) * t) * 0.25;
+      return (noise * 0.55 + sweep) * env;
+    },
+  },
+  {
+    id: "builtin-sfx-bass-drop",
+    title: "SFX: Bass Boom Drop",
+    durationSec: 1.1,
+    synth: (t) => {
+      const env = Math.exp(-t * 3.8);
+      const freq = 140 * Math.exp(-t * 4.5) + 38;
+      return Math.sin(2 * Math.PI * freq * t) * env * 0.85;
+    },
+  },
+  {
+    id: "builtin-sfx-pop",
+    title: "SFX: CapCut Text Pop",
+    durationSec: 0.25,
+    synth: (t) => {
+      const env = Math.exp(-t * 22);
+      const freq = 520 + 620 * Math.exp(-t * 30);
+      return Math.sin(2 * Math.PI * freq * t) * env * 0.75;
+    },
+  },
+  {
+    id: "builtin-sfx-riser",
+    title: "SFX: Hype Riser",
+    durationSec: 1.4,
+    synth: (t, i, dur) => {
+      const p = t / dur;
+      const freq = 180 + 950 * p * p;
+      const noise = ((Math.sin(i * 78.233) * 19341.12) % 1) * 2 - 1;
+      return (Math.sin(2 * Math.PI * freq * t) * 0.45 + noise * 0.22) * Math.pow(p, 1.3);
+    },
+  },
+  {
+    id: "builtin-sfx-shutter",
+    title: "SFX: Camera Shutter",
+    durationSec: 0.3,
+    synth: (t, i) => {
+      const click1 = t < 0.06 ? Math.exp(-t * 70) : 0;
+      const click2 = t > 0.1 ? Math.exp(-(t - 0.1) * 70) : 0;
+      const noise = ((Math.sin(i * 45.123) * 91827.3) % 1) * 2 - 1;
+      return noise * (click1 + click2) * 0.75;
+    },
+  },
+];
+
+function buildSfxWavBuffer(spec: SfxSpec): Buffer {
+  const sampleRate = 44100;
+  const totalSamples = Math.floor(spec.durationSec * sampleRate);
+  const dataBytes = totalSamples * 4;
+  const buf = Buffer.alloc(44 + dataBytes);
+
+  buf.write("RIFF", 0);
+  buf.writeUInt32LE(36 + dataBytes, 4);
+  buf.write("WAVE", 8);
+  buf.write("fmt ", 12);
+  buf.writeUInt32LE(16, 16);
+  buf.writeUInt16LE(1, 20);
+  buf.writeUInt16LE(2, 22);
+  buf.writeUInt32LE(sampleRate, 24);
+  buf.writeUInt32LE(sampleRate * 4, 28);
+  buf.writeUInt16LE(4, 32);
+  buf.writeUInt16LE(16, 34);
+  buf.write("data", 36);
+  buf.writeUInt32LE(dataBytes, 40);
+
+  for (let i = 0; i < totalSamples; i++) {
+    const val = Math.max(-0.95, Math.min(0.95, spec.synth(i / sampleRate, i, spec.durationSec)));
+    const s = Math.round(val * 32767);
+    buf.writeInt16LE(s, 44 + i * 4);
+    buf.writeInt16LE(s, 44 + i * 4 + 2);
+  }
+  return buf;
+}
+
+async function ensureBuiltinSfx(
+  builtinsDir: string,
+  store: MediaStore
+): Promise<void> {
+  for (const spec of BUILTIN_SFX) {
+    const m4aPath = path.join(builtinsDir, `${spec.id}.m4a`);
+    if (!fs.existsSync(m4aPath)) {
+      const wavPath = path.join(builtinsDir, `${spec.id}.wav`);
+      fs.writeFileSync(wavPath, buildSfxWavBuffer(spec));
+      const res = await runProcess(
+        "ffmpeg",
+        ["-y", "-i", wavPath, "-c:a", "aac", "-b:a", "128k", m4aPath],
+        { timeoutMs: 10_000 }
+      );
+      if (res.code === 0) fs.unlinkSync(wavPath);
+    }
+    const finalPath = fs.existsSync(m4aPath)
+      ? m4aPath
+      : path.join(builtinsDir, `${spec.id}.wav`);
+
+    store.upsert(
+      {
+        id: spec.id,
+        filename: path.basename(finalPath),
+        originalName: spec.title,
+        kind: "audio",
+        audioCategory: "sfx",
+        mimeType: finalPath.endsWith(".m4a") ? "audio/mp4" : "audio/wav",
+        url: `/api/media/${spec.id}/stream`,
+        durationSec: spec.durationSec,
+        hasAudio: true,
+        beatMarkersSec: [],
+        energyPeaksSec: [0.05],
+        silenceRanges: [],
+        isBuiltIn: true,
+      },
+      finalPath
+    );
   }
 }
 

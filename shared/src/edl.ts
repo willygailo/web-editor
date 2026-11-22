@@ -42,8 +42,14 @@ export const OverlayStyleSchema = z.enum([
 ]);
 export type OverlayStyle = z.infer<typeof OverlayStyleSchema>;
 
+export const TextAnimationSchema = z.enum(["none", "pop", "fade", "slide-up"]);
+export type TextAnimation = z.infer<typeof TextAnimationSchema>;
+
 export const MediaKindSchema = z.enum(["video", "image", "audio"]);
 export type MediaKind = z.infer<typeof MediaKindSchema>;
+
+export const AudioCategorySchema = z.enum(["bgm", "sfx", "voiceover"]);
+export type AudioCategory = z.infer<typeof AudioCategorySchema>;
 
 export const SilenceRangeSchema = z.object({
   startSec: z.number().min(0),
@@ -56,6 +62,7 @@ export const MediaAssetSchema = z.object({
   filename: z.string().min(1),
   originalName: z.string().min(1),
   kind: MediaKindSchema,
+  audioCategory: AudioCategorySchema.optional(),
   mimeType: z.string().min(1),
   url: z.string().min(1),
   thumbnailUrl: z.string().optional(),
@@ -71,6 +78,23 @@ export const MediaAssetSchema = z.object({
 });
 export type MediaAsset = z.infer<typeof MediaAssetSchema>;
 
+export const ClipAdjustSchema = z.object({
+  brightness: z.number().min(-0.5).max(0.5).default(0),
+  contrast: z.number().min(-0.5).max(0.5).default(0),
+  saturation: z.number().min(-1).max(1).default(0),
+  warmth: z.number().min(-0.5).max(0.5).default(0),
+  vignette: z.number().min(0).max(1).default(0),
+});
+export type ClipAdjust = z.infer<typeof ClipAdjustSchema>;
+
+export const ClipTransformSchema = z.object({
+  scale: z.number().min(0.5).max(3).default(1),
+  offsetX: z.number().min(-0.5).max(0.5).default(0),
+  offsetY: z.number().min(-0.5).max(0.5).default(0),
+  rotationDeg: z.number().min(-180).max(180).default(0),
+});
+export type ClipTransform = z.infer<typeof ClipTransformSchema>;
+
 export const ClipSlotSchema = z.object({
   id: z.string().min(1),
   assetId: z.string().min(1),
@@ -83,6 +107,9 @@ export const ClipSlotSchema = z.object({
   filter: FilterPresetSchema.default("none"),
   muteOriginalAudio: z.boolean().default(false),
   volume: z.number().min(0).max(2).default(1),
+  reversed: z.boolean().default(false),
+  adjust: ClipAdjustSchema.optional(),
+  transform: ClipTransformSchema.optional(),
   label: z.string().optional(),
 });
 export type ClipSlot = z.infer<typeof ClipSlotSchema>;
@@ -94,14 +121,37 @@ export const TextOverlaySchema = z.object({
   endSec: z.number().positive(),
   position: OverlayPositionSchema.default("bottom"),
   style: OverlayStyleSchema.default("capcut-pop"),
+  xNorm: z.number().min(0.05).max(0.95).optional(),
+  yNorm: z.number().min(0.05).max(0.95).optional(),
+  scale: z.number().min(0.4).max(2.5).default(1),
+  rotationDeg: z.number().min(-180).max(180).default(0),
+  color: z.string().optional(),
+  bgColor: z.string().optional(),
+  animation: TextAnimationSchema.default("pop"),
 });
 export type TextOverlay = z.infer<typeof TextOverlaySchema>;
 
+export const StickerOverlaySchema = z.object({
+  id: z.string().min(1),
+  stickerId: z.string().min(1),
+  startSec: z.number().min(0),
+  endSec: z.number().positive(),
+  xNorm: z.number().min(0.05).max(0.95).default(0.5),
+  yNorm: z.number().min(0.05).max(0.95).default(0.26),
+  scale: z.number().min(0.3).max(2.5).default(1),
+  rotationDeg: z.number().min(-180).max(180).default(0),
+});
+export type StickerOverlay = z.infer<typeof StickerOverlaySchema>;
+
 export const AudioTrackSchema = z.object({
+  id: z.string().min(1).optional(),
+  kind: AudioCategorySchema.default("bgm"),
   assetId: z.string().min(1),
   title: z.string().optional(),
+  timelineStartSec: z.number().min(0).default(0),
+  durationSec: z.number().positive().optional(),
   startOffsetSec: z.number().min(0).default(0),
-  volume: z.number().min(0).max(1.5).default(0.85),
+  volume: z.number().min(0).max(2).default(0.85),
   fadeInSec: z.number().min(0).max(5).default(0.25),
   fadeOutSec: z.number().min(0).max(8).default(0.8),
   beatMarkersSec: z.array(z.number().min(0)).default([]),
@@ -120,9 +170,12 @@ export const CutProjectSchema = z.object({
   targetDurationSec: z.number().min(3).max(180).default(15),
   clips: z.array(ClipSlotSchema).min(1),
   overlays: z.array(TextOverlaySchema).default([]),
+  stickers: z.array(StickerOverlaySchema).default([]),
   audioTrack: AudioTrackSchema.optional(),
+  audioTracks: z.array(AudioTrackSchema).default([]),
 });
 export type CutProject = z.infer<typeof CutProjectSchema>;
+export type CutProjectInput = z.input<typeof CutProjectSchema>;
 
 export interface ComputedSlotLayout {
   slot: ClipSlot;
@@ -136,6 +189,39 @@ export interface ComputedSlotLayout {
 export interface ComputedTimelineLayout {
   slots: ComputedSlotLayout[];
   totalDurationSec: number;
+}
+
+export function getOverlayNormalizedPos(overlay: Pick<TextOverlay, "position" | "xNorm" | "yNorm">): {
+  xNorm: number;
+  yNorm: number;
+} {
+  const defaultY =
+    overlay.position === "top" ? 0.14 : overlay.position === "center" ? 0.5 : 0.84;
+  return {
+    xNorm: overlay.xNorm ?? 0.5,
+    yNorm: overlay.yNorm ?? defaultY,
+  };
+}
+
+export function getProjectAudioTracks(
+  project: Pick<CutProjectInput, "audioTrack" | "audioTracks">
+): Array<AudioTrack & { id: string; kind: AudioCategory; timelineStartSec: number }> {
+  const raw =
+    project.audioTracks && project.audioTracks.length > 0
+      ? project.audioTracks
+      : project.audioTrack
+        ? [project.audioTrack]
+        : [];
+
+  return raw.map((t, idx) => {
+    const parsed = AudioTrackSchema.parse(t);
+    return {
+      ...parsed,
+      id: parsed.id || `aud-${idx + 1}`,
+      kind: parsed.kind || "bgm",
+      timelineStartSec: parsed.timelineStartSec ?? 0,
+    };
+  });
 }
 
 export function getAspectDimensions(

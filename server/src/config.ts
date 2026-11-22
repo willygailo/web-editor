@@ -40,6 +40,7 @@ export interface ServerConfig {
   rendersDir: string;
   builtinsDir: string;
   assetsDbPath: string;
+  templatesDbPath: string;
   geminiApiKey: string;
   geminiModel: string;
   anthropicApiKey: string;
@@ -74,6 +75,7 @@ export function getConfig(): ServerConfig {
     rendersDir,
     builtinsDir,
     assetsDbPath: path.join(storageDir, "assets.json"),
+    templatesDbPath: path.join(storageDir, "templates.json"),
     geminiApiKey: (process.env.GEMINI_API_KEY || "").trim(),
     geminiModel: (process.env.GEMINI_MODEL || "gemini-4-hydrogen").trim(),
     anthropicApiKey: (process.env.ANTHROPIC_API_KEY || "").trim(),

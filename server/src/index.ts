@@ -8,6 +8,7 @@ import { getConfig, REPO_ROOT } from "./config.js";
 import { ensureBuiltinAudioBeats } from "./media/audioSynth.js";
 import { checkFfmpegAvailable } from "./media/probe.js";
 import { MediaStore } from "./media/store.js";
+import { TemplatesStore } from "./media/templatesStore.js";
 import { RenderJobQueue } from "./render/jobQueue.js";
 import { registerAiRoutes } from "./routes/ai.js";
 import { registerMediaRoutes } from "./routes/media.js";
@@ -26,6 +27,7 @@ export async function buildApp() {
   });
 
   const store = new MediaStore(config.assetsDbPath);
+  const templatesStore = new TemplatesStore(config.templatesDbPath);
   const queue = new RenderJobQueue(config);
 
   const ffmpegAvailable = await checkFfmpegAvailable();
@@ -46,7 +48,7 @@ export async function buildApp() {
   });
 
   registerMediaRoutes(app, config, store);
-  registerAiRoutes(app, config, store);
+  registerAiRoutes(app, config, store, templatesStore);
   registerRenderRoutes(app, store, queue);
 
   const webDistDir = path.join(REPO_ROOT, "web", "dist");

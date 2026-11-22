@@ -1,74 +1,194 @@
-import { Plus, Trash2, Volume2, VolumeX } from "lucide-react";
-import type {
-  ClipSlot,
-  CutProject,
-  FilterPreset,
-  MediaAsset,
-  MotionPreset,
-  OverlayPosition,
-  OverlayStyle,
-  TextOverlay,
-  TransitionType,
+import { useState } from "react";
+import {
+  Captions,
+  Copy,
+  Move,
+  Plus,
+  RotateCcw,
+  Sliders,
+  Sparkles,
+  Sticker,
+  Trash2,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
+import {
+  STICKER_CATALOG,
+  type ClipAdjust,
+  type ClipSlot,
+  type ClipTransform,
+  type CutProject,
+  type FilterPreset,
+  type MediaAsset,
+  type MotionPreset,
+  type OverlayPosition,
+  type OverlayStyle,
+  type StickerOverlay,
+  type TextAnimation,
+  type TextOverlay,
+  type TransitionType,
 } from "@cutflow/shared";
+import type { EditorSelection } from "../state/useEditorStore";
+
+export type InspectorSection = "clip" | "adjust" | "text" | "stickers";
 
 interface SlotInspectorProps {
   project: CutProject | null;
-  selectedSlotId: string | null;
+  selection: EditorSelection;
+  activeSection?: InspectorSection;
+  assets: MediaAsset[];
   assetsById: Map<string, MediaAsset>;
-  onUpdateSlot: (slotId: string, patch: Partial<ClipSlot>) => void;
+  currentTime: number;
+  onUpdateSlot: (slotId: string, patch: Partial<ClipSlot>, recordHistory?: boolean) => void;
+  onReplaceSlotAsset: (slotId: string, asset: MediaAsset) => void;
+  onDuplicateSlot: (slotId: string) => void;
   onDeleteSlot: (slotId: string) => void;
-  onUpdateOverlays: (overlays: TextOverlay[]) => void;
+  onUpdateOverlays: (overlays: TextOverlay[], recordHistory?: boolean) => void;
+  onUpdateStickers: (stickers: StickerOverlay[], recordHistory?: boolean) => void;
+  onSelectOverlay: (id: string | null) => void;
+  onSelectSticker: (id: string | null) => void;
+  onAutoCaptions: (videoAssetId: string) => Promise<void>;
 }
 
 const MOTIONS: MotionPreset[] = ["none", "zoom-in", "zoom-out", "punch-zoom", "pan-left", "pan-right"];
 const TRANSITIONS: TransitionType[] = ["cut", "crossfade", "slide-left", "flash-white", "zoom-blur"];
 const FILTERS: FilterPreset[] = ["none", "vivid", "cinematic", "warm-film", "bw-contrast"];
 const OVERLAY_STYLES: OverlayStyle[] = ["bold-hook", "capcut-pop", "minimal-caption", "neon-badge"];
-const OVERLAY_POSITIONS: OverlayPosition[] = ["top", "center", "bottom"];
+const OVERLAY_ANIMS: TextAnimation[] = ["pop", "fade", "slide-up", "none"];
+
+const DEFAULT_ADJUST: ClipAdjust = {
+  brightness: 0,
+  contrast: 0,
+  saturation: 0,
+  warmth: 0,
+  vignette: 0,
+};
+
+const DEFAULT_TRANSFORM: ClipTransform = {
+  scale: 1,
+  offsetX: 0,
+  offsetY: 0,
+  rotationDeg: 0,
+};
 
 export function SlotInspector({
   project,
-  selectedSlotId,
+  selection,
+  activeSection,
+  assets,
   assetsById,
+  currentTime,
   onUpdateSlot,
+  onReplaceSlotAsset,
+  onDuplicateSlot,
   onDeleteSlot,
   onUpdateOverlays,
+  onUpdateStickers,
+  onSelectOverlay,
+  onSelectSticker,
+  onAutoCaptions,
 }: SlotInspectorProps) {
+  const [capturingCaptions, setCapturingCaptions] = useState(false);
+
   if (!project) {
     return (
       <div className="rounded-2xl border border-slate-800 bg-[#090b10] p-4 text-xs text-slate-400">
-        No active timeline yet. Run AI Auto Edit or apply a template to fine-tune clips and text.
+        Select a clip, text, sticker, or template to edit properties here.
       </div>
     );
   }
 
-  const slot = project.clips.find((c) => c.id === selectedSlotId) ?? project.clips[0];
+  const slot = project.clips.find((c) => c.id === selection.slotId) ?? project.clips[0];
   const asset = slot ? assetsById.get(slot.assetId) : undefined;
+  const visualAssets = assets.filter((a) => a.kind !== "audio");
   const maxDur = asset?.durationSec ?? 10;
+  const adjust = { ...DEFAULT_ADJUST, ...(slot?.adjust ?? {}) };
+  const transform = { ...DEFAULT_TRANSFORM, ...(slot?.transform ?? {}) };
+
+  const selectedOverlay =
+    project.overlays.find((o) => o.id === selection.overlayId) ?? project.overlays[0];
+  const selectedSticker =
+    (project.stickers || []).find((s) => s.id === selection.stickerId) ??
+    (project.stickers || [])[0];
+
+  // Determine which section(s) to emphasize
+  const showAllDesktop = !activeSection;
+  const showClip = showAllDesktop || activeSection === "clip";
+  const showAdjust = showAllDesktop || activeSection === "adjust";
+  const showText = showAllDesktop || activeSection === "text" || Boolean(selection.overlayId);
+  const showStickers =
+    showAllDesktop || activeSection === "stickers" || Boolean(selection.stickerId);
 
   return (
-    <div className="flex flex-col gap-4 text-xs">
-      {slot && (
+    <div className="flex flex-col gap-3 text-xs">
+      {slot && showClip && (
         <section className="flex flex-col gap-2.5 rounded-2xl border border-slate-800 bg-[#090b10] p-3">
           <div className="flex items-center justify-between gap-2">
             <h3 className="truncate text-xs font-bold text-slate-100">
-              Clip Slot: {asset?.originalName ?? slot.id}
+              Clip: {asset?.originalName ?? slot.id}
             </h3>
-            {project.clips.length > 1 && (
+            <div className="flex gap-1">
               <button
                 type="button"
-                onClick={() => onDeleteSlot(slot.id)}
-                aria-label="Remove clip from timeline"
-                className="inline-flex items-center gap-1 rounded-lg bg-rose-500/15 px-2 py-1 text-[11px] font-semibold text-rose-300 hover:bg-rose-500/25"
+                onClick={() => onDuplicateSlot(slot.id)}
+                aria-label="Duplicate clip"
+                className="rounded-lg border border-slate-700 p-1 text-slate-300 hover:border-cyan-400"
               >
-                <Trash2 className="size-3.5" aria-hidden="true" />
-                Remove
+                <Copy className="size-3.5" aria-hidden="true" />
               </button>
-            )}
+              {project.clips.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => onDeleteSlot(slot.id)}
+                  aria-label="Remove clip from timeline"
+                  className="rounded-lg bg-rose-500/15 p-1 text-rose-300 hover:bg-rose-500/25"
+                >
+                  <Trash2 className="size-3.5" aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* CapCut Replace Clip + Reverse */}
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex flex-col gap-1 text-[11px] text-slate-400">
+              <span>Replace Clip</span>
+              <select
+                value={slot.assetId}
+                onChange={(e) => {
+                  const next = assetsById.get(e.target.value);
+                  if (next) onReplaceSlotAsset(slot.id, next);
+                }}
+                className="rounded-lg border border-slate-700 bg-[#111520] px-2 py-1.5 text-xs text-slate-100"
+              >
+                {visualAssets.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.originalName}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="flex flex-col justify-end gap-1">
+              {asset?.kind === "video" && (
+                <button
+                  type="button"
+                  onClick={() => onUpdateSlot(slot.id, { reversed: !slot.reversed })}
+                  className={`inline-flex items-center justify-center gap-1 rounded-lg border px-2 py-1.5 text-xs font-semibold ${
+                    slot.reversed
+                      ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                      : "border-slate-700 bg-[#111520] text-slate-300"
+                  }`}
+                >
+                  <RotateCcw className="size-3.5" aria-hidden="true" />
+                  <span>{slot.reversed ? "Reversed On" : "Reverse"}</span>
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <label className="flex flex-col gap-1 text-[11px] text-slate-400">
+            <label className="flex flex-col gap-0.5 text-[11px] text-slate-400">
               <span>In ({slot.sourceStartSec.toFixed(1)}s)</span>
               <input
                 type="range"
@@ -81,7 +201,7 @@ export function SlotInspector({
                 }
               />
             </label>
-            <label className="flex flex-col gap-1 text-[11px] text-slate-400">
+            <label className="flex flex-col gap-0.5 text-[11px] text-slate-400">
               <span>Out ({slot.sourceEndSec.toFixed(1)}s)</span>
               <input
                 type="range"
@@ -136,7 +256,7 @@ export function SlotInspector({
             </label>
 
             <label className="flex flex-col gap-1 text-[11px] text-slate-400">
-              <span>Color Filter</span>
+              <span>Filter</span>
               <select
                 value={slot.filter}
                 onChange={(e) =>
@@ -152,7 +272,7 @@ export function SlotInspector({
               </select>
             </label>
 
-            <label className="flex flex-col gap-1 text-[11px] text-slate-400">
+            <label className="flex flex-col gap-0.5 text-[11px] text-slate-400">
               <span>Speed ({slot.speed.toFixed(2)}x)</span>
               <input
                 type="range"
@@ -180,59 +300,184 @@ export function SlotInspector({
             {slot.muteOriginalAudio ? (
               <>
                 <VolumeX className="size-3.5 text-slate-400" aria-hidden="true" />
-                <span>Original Clip Audio Muted</span>
+                <span>Original Audio Muted</span>
               </>
             ) : (
               <>
                 <Volume2 className="size-3.5 text-cyan-400" aria-hidden="true" />
-                <span>Original Clip Audio On</span>
+                <span>Original Audio On ({Math.round(slot.volume * 100)}%)</span>
               </>
             )}
           </button>
         </section>
       )}
 
-      <section className="flex flex-col gap-2.5 rounded-2xl border border-slate-800 bg-[#090b10] p-3">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-xs font-bold text-slate-100">Text Overlays</h3>
-          <button
-            type="button"
-            onClick={() =>
-              onUpdateOverlays([
-                ...project.overlays,
-                {
-                  id: `txt-${Date.now()}`,
-                  text: "NEW HOOK",
-                  startSec: 0.2,
-                  endSec: Math.min(project.targetDurationSec, 3.0),
-                  position: "center",
-                  style: "capcut-pop",
-                },
-              ])
-            }
-            className="inline-flex items-center gap-1 rounded-lg bg-cyan-500/15 px-2.5 py-1 text-[11px] font-semibold text-cyan-300 hover:bg-cyan-500/25"
-          >
-            <Plus className="size-3.5" aria-hidden="true" />
-            Add Text
-          </button>
-        </div>
-
-        {project.overlays.length === 0 ? (
-          <p className="text-[11px] text-slate-500">No text overlays on timeline.</p>
-        ) : (
-          project.overlays.map((ov) => (
-            <div
-              key={ov.id}
-              className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-[#111520] p-2.5"
+      {/* Color Adjust & Transform */}
+      {slot && showAdjust && (
+        <section className="flex flex-col gap-2 rounded-2xl border border-slate-800 bg-[#090b10] p-3">
+          <div className="flex items-center justify-between">
+            <h3 className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-100">
+              <Sliders className="size-3.5 text-cyan-400" aria-hidden="true" />
+              Adjust &amp; Crop Transform
+            </h3>
+            <button
+              type="button"
+              onClick={() =>
+                onUpdateSlot(slot.id, { adjust: DEFAULT_ADJUST, transform: DEFAULT_TRANSFORM })
+              }
+              className="text-[11px] text-slate-400 hover:text-cyan-300"
             >
+              Reset
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-400">
+            <label className="flex flex-col">
+              <span>Brightness ({adjust.brightness.toFixed(2)})</span>
+              <input
+                type="range"
+                min={-0.35}
+                max={0.35}
+                step={0.02}
+                value={adjust.brightness}
+                onChange={(e) =>
+                  onUpdateSlot(slot.id, { adjust: { ...adjust, brightness: Number(e.target.value) } })
+                }
+              />
+            </label>
+            <label className="flex flex-col">
+              <span>Contrast ({adjust.contrast.toFixed(2)})</span>
+              <input
+                type="range"
+                min={-0.35}
+                max={0.45}
+                step={0.02}
+                value={adjust.contrast}
+                onChange={(e) =>
+                  onUpdateSlot(slot.id, { adjust: { ...adjust, contrast: Number(e.target.value) } })
+                }
+              />
+            </label>
+            <label className="flex flex-col">
+              <span>Saturation ({adjust.saturation.toFixed(2)})</span>
+              <input
+                type="range"
+                min={-1}
+                max={1}
+                step={0.05}
+                value={adjust.saturation}
+                onChange={(e) =>
+                  onUpdateSlot(slot.id, { adjust: { ...adjust, saturation: Number(e.target.value) } })
+                }
+              />
+            </label>
+            <label className="flex flex-col">
+              <span>Warmth ({adjust.warmth.toFixed(2)})</span>
+              <input
+                type="range"
+                min={-0.4}
+                max={0.4}
+                step={0.02}
+                value={adjust.warmth}
+                onChange={(e) =>
+                  onUpdateSlot(slot.id, { adjust: { ...adjust, warmth: Number(e.target.value) } })
+                }
+              />
+            </label>
+            <label className="flex flex-col">
+              <span>Vignette ({Math.round(adjust.vignette * 100)}%)</span>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={adjust.vignette}
+                onChange={(e) =>
+                  onUpdateSlot(slot.id, { adjust: { ...adjust, vignette: Number(e.target.value) } })
+                }
+              />
+            </label>
+            <label className="flex flex-col">
+              <span>Zoom Scale ({transform.scale.toFixed(2)}x)</span>
+              <input
+                type="range"
+                min={0.6}
+                max={2.2}
+                step={0.05}
+                value={transform.scale}
+                onChange={(e) =>
+                  onUpdateSlot(slot.id, { transform: { ...transform, scale: Number(e.target.value) } })
+                }
+              />
+            </label>
+          </div>
+        </section>
+      )}
+
+      {/* Text & Auto-Captions Designer */}
+      {showText && (
+        <section className="flex flex-col gap-2.5 rounded-2xl border border-slate-800 bg-[#090b10] p-3">
+          <div className="flex flex-wrap items-center justify-between gap-1.5">
+            <h3 className="text-xs font-bold text-slate-100">Text &amp; Captions</h3>
+            <div className="flex gap-1">
+              {asset?.hasAudio && (
+                <button
+                  type="button"
+                  disabled={capturingCaptions}
+                  onClick={async () => {
+                    setCapturingCaptions(true);
+                    try {
+                      await onAutoCaptions(asset.id);
+                    } finally {
+                      setCapturingCaptions(false);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 rounded-lg bg-amber-400/20 px-2 py-1 text-[11px] font-bold text-amber-200 hover:bg-amber-400/30 disabled:opacity-50"
+                >
+                  <Captions className="size-3.5" aria-hidden="true" />
+                  <span>{capturingCaptions ? "Listening..." : "Auto Captions"}</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  const id = `txt-${Date.now().toString(36)}`;
+                  onUpdateOverlays([
+                    ...project.overlays,
+                    {
+                      id,
+                      text: "NEW TEXT",
+                      startSec: Number(Math.max(0, currentTime).toFixed(2)),
+                      endSec: Number(Math.min(project.targetDurationSec, currentTime + 2.5).toFixed(2)),
+                      position: "center",
+                      style: "capcut-pop",
+                      xNorm: 0.5,
+                      yNorm: 0.5,
+                      scale: 1,
+                      rotationDeg: 0,
+                      animation: "pop",
+                    },
+                  ]);
+                  onSelectOverlay(id);
+                }}
+                className="inline-flex items-center gap-1 rounded-lg bg-cyan-500/15 px-2 py-1 text-[11px] font-semibold text-cyan-300 hover:bg-cyan-500/25"
+              >
+                <Plus className="size-3.5" aria-hidden="true" />
+                Add Text
+              </button>
+            </div>
+          </div>
+
+          {selectedOverlay ? (
+            <div className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-[#111520] p-2.5">
               <div className="flex gap-1.5">
                 <input
                   type="text"
-                  value={ov.text}
+                  value={selectedOverlay.text}
                   onChange={(e) =>
                     onUpdateOverlays(
-                      project.overlays.map((item) =>
-                        item.id === ov.id ? { ...item, text: e.target.value } : item
+                      project.overlays.map((o) =>
+                        o.id === selectedOverlay.id ? { ...o, text: e.target.value } : o
                       )
                     )
                   }
@@ -241,25 +486,27 @@ export function SlotInspector({
                 />
                 <button
                   type="button"
-                  onClick={() =>
-                    onUpdateOverlays(project.overlays.filter((item) => item.id !== ov.id))
-                  }
+                  onClick={() => {
+                    onUpdateOverlays(project.overlays.filter((o) => o.id !== selectedOverlay.id));
+                    onSelectOverlay(null);
+                  }}
                   aria-label="Delete text overlay"
                   className="rounded-lg px-2 text-slate-400 hover:text-rose-400"
                 >
                   <Trash2 className="size-3.5" aria-hidden="true" />
                 </button>
               </div>
+
               <div className="grid grid-cols-2 gap-1.5">
                 <select
-                  value={ov.style}
+                  value={selectedOverlay.style}
                   aria-label="Overlay style"
                   onChange={(e) =>
                     onUpdateOverlays(
-                      project.overlays.map((item) =>
-                        item.id === ov.id
-                          ? { ...item, style: e.target.value as OverlayStyle }
-                          : item
+                      project.overlays.map((o) =>
+                        o.id === selectedOverlay.id
+                          ? { ...o, style: e.target.value as OverlayStyle }
+                          : o
                       )
                     )
                   }
@@ -272,30 +519,191 @@ export function SlotInspector({
                   ))}
                 </select>
                 <select
-                  value={ov.position}
-                  aria-label="Overlay position"
+                  value={selectedOverlay.animation ?? "pop"}
+                  aria-label="Text animation"
                   onChange={(e) =>
                     onUpdateOverlays(
-                      project.overlays.map((item) =>
-                        item.id === ov.id
-                          ? { ...item, position: e.target.value as OverlayPosition }
-                          : item
+                      project.overlays.map((o) =>
+                        o.id === selectedOverlay.id
+                          ? { ...o, animation: e.target.value as TextAnimation }
+                          : o
                       )
                     )
                   }
                   className="rounded-lg border border-slate-700 bg-[#090b10] px-2 py-1 text-[11px]"
                 >
-                  {OVERLAY_POSITIONS.map((pos) => (
-                    <option key={pos} value={pos}>
-                      {pos}
+                  {OVERLAY_ANIMS.map((an) => (
+                    <option key={an} value={an}>
+                      anim: {an}
                     </option>
                   ))}
                 </select>
               </div>
+
+              <div className="flex items-center justify-between gap-2 text-[11px]">
+                <span className="inline-flex items-center gap-1 text-slate-400">
+                  <Move className="size-3" aria-hidden="true" />
+                  Drag on preview or snap:
+                </span>
+                <div className="flex gap-1">
+                  {(["top", "center", "bottom"] as OverlayPosition[]).map((pos) => (
+                    <button
+                      key={pos}
+                      type="button"
+                      onClick={() =>
+                        onUpdateOverlays(
+                          project.overlays.map((o) =>
+                            o.id === selectedOverlay.id
+                              ? {
+                                  ...o,
+                                  position: pos,
+                                  xNorm: 0.5,
+                                  yNorm: pos === "top" ? 0.14 : pos === "center" ? 0.5 : 0.84,
+                                }
+                              : o
+                          )
+                        )
+                      }
+                      className="rounded border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-300 hover:border-cyan-400"
+                    >
+                      {pos}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-400">
+                <label className="flex flex-col">
+                  <span>Size ({(selectedOverlay.scale ?? 1).toFixed(2)}x)</span>
+                  <input
+                    type="range"
+                    min={0.5}
+                    max={2.2}
+                    step={0.05}
+                    value={selectedOverlay.scale ?? 1}
+                    onChange={(e) =>
+                      onUpdateOverlays(
+                        project.overlays.map((o) =>
+                          o.id === selectedOverlay.id
+                            ? { ...o, scale: Number(e.target.value) }
+                            : o
+                        )
+                      )
+                    }
+                  />
+                </label>
+                <label className="flex flex-col">
+                  <span>Rotate ({Math.round(selectedOverlay.rotationDeg ?? 0)}°)</span>
+                  <input
+                    type="range"
+                    min={-45}
+                    max={45}
+                    step={1}
+                    value={selectedOverlay.rotationDeg ?? 0}
+                    onChange={(e) =>
+                      onUpdateOverlays(
+                        project.overlays.map((o) =>
+                          o.id === selectedOverlay.id
+                            ? { ...o, rotationDeg: Number(e.target.value) }
+                            : o
+                        )
+                      )
+                    }
+                  />
+                </label>
+              </div>
             </div>
-          ))
-        )}
-      </section>
+          ) : (
+            <p className="text-[11px] text-slate-500">
+              Tap <strong>Add Text</strong> or <strong>Auto Captions</strong> to add text layers.
+            </p>
+          )}
+        </section>
+      )}
+
+      {/* Stickers */}
+      {showStickers && (
+        <section className="flex flex-col gap-2 rounded-2xl border border-slate-800 bg-[#090b10] p-3">
+          <h3 className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-100">
+            <Sticker className="size-3.5 text-emerald-400" aria-hidden="true" />
+            Stickers (tap to add @ {currentTime.toFixed(1)}s)
+          </h3>
+
+          <div className="grid grid-cols-3 gap-1.5">
+            {STICKER_CATALOG.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  const id = `stk-${Date.now().toString(36)}`;
+                  onUpdateStickers([
+                    ...(project.stickers || []),
+                    {
+                      id,
+                      stickerId: item.id,
+                      startSec: Number(Math.max(0, currentTime).toFixed(2)),
+                      endSec: Number(Math.min(project.targetDurationSec, currentTime + 2.5).toFixed(2)),
+                      xNorm: 0.5,
+                      yNorm: 0.28,
+                      scale: 1,
+                      rotationDeg: 0,
+                    },
+                  ]);
+                  onSelectSticker(id);
+                }}
+                className="flex flex-col items-center gap-1 rounded-xl border border-slate-800 bg-[#111520] p-2 hover:border-emerald-400"
+              >
+                <img
+                  src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(item.svg)}`}
+                  alt={item.label}
+                  className="size-8 object-contain"
+                />
+                <span className="truncate text-[10px] text-slate-300">{item.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {selectedSticker && (
+            <div className="flex flex-col gap-1.5 rounded-xl border border-emerald-500/40 bg-[#111520] p-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-emerald-200">
+                  Sticker: {selectedSticker.stickerId}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onUpdateStickers(
+                      (project.stickers || []).filter((s) => s.id !== selectedSticker.id)
+                    );
+                    onSelectSticker(null);
+                  }}
+                  aria-label="Delete sticker"
+                  className="text-rose-300 hover:text-rose-400"
+                >
+                  <Trash2 className="size-3.5" aria-hidden="true" />
+                </button>
+              </div>
+              <label className="flex flex-col text-[11px] text-slate-400">
+                <span>Sticker Size ({selectedSticker.scale.toFixed(2)}x)</span>
+                <input
+                  type="range"
+                  min={0.4}
+                  max={2.2}
+                  step={0.05}
+                  value={selectedSticker.scale}
+                  onChange={(e) =>
+                    onUpdateStickers(
+                      (project.stickers || []).map((s) =>
+                        s.id === selectedSticker.id ? { ...s, scale: Number(e.target.value) } : s
+                      )
+                    )
+                  }
+                />
+              </label>
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }

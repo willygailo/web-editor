@@ -1,6 +1,12 @@
+import fs from "node:fs";
+import path from "node:path";
 import {
   computeTimelineLayout,
   getAspectDimensions,
+  getProjectAudioTracks,
+  getStickerById,
+  type ClipAdjust,
+  type ClipTransform,
   type CutProject,
   type FilterPreset,
   type MediaAsset,
@@ -15,6 +21,7 @@ export interface BuildRenderPlanInput {
   filePathsById: Map<string, string>;
   outputPath: string;
   assSubtitlePath?: string;
+  builtinsDir?: string;
 }
 
 export interface FfmpegRenderPlan {
@@ -56,6 +63,67 @@ function filterChainForPreset(preset: FilterPreset): string[] {
     case "none":
       return [];
   }
+}
+
+function filterChainForAdjust(adjust?: ClipAdjust): string[] {
+  if (!adjust) return [];
+  const ops: string[] = [];
+  const hasEq =
+    Math.abs(adjust.brightness) > 0.01 ||
+    Math.abs(adjust.contrast) > 0.01 ||
+    Math.abs(adjust.saturation) > 0.01;
+  if (hasEq) {
+    const b = Math.max(-0.5, Math.min(0.5, adjust.brightness)).toFixed(2);
+    const c = Math.max(0.5, Math.min(1.6, 1 + adjust.contrast)).toFixed(2);
+    const s = Math.max(0, Math.min(2.2, 1 + adjust.saturation)).toFixed(2);
+    ops.push(`eq=brightness=${b}:contrast=${c}:saturation=${s}`);
+  }
+  if (Math.abs(adjust.warmth) > 0.01) {
+    const w = Math.max(-0.4, Math.min(0.4, adjust.warmth));
+    ops.push(`colorbalance=rs=${w.toFixed(2)}:bs=${(-w).toFixed(2)}`);
+  }
+  if (adjust.vignette > 0.02) {
+    const angle = (Math.min(1, adjust.vignette) * 0.72).toFixed(2);
+    ops.push(`vignette=angle=${angle}`);
+  }
+  return ops;
+}
+
+function buildTransformFilter(
+  transform: ClipTransform | undefined,
+  width: number,
+  height: number
+): string[] {
+  if (!transform) return [];
+  const hasScale = Math.abs(transform.scale - 1) > 0.01;
+  const hasShift =
+    Math.abs(transform.offsetX) > 0.005 || Math.abs(transform.offsetY) > 0.005;
+  const hasRot = Math.abs(transform.rotationDeg) > 0.5;
+  if (!hasScale && !hasShift && !hasRot) return [];
+
+  const ops: string[] = [];
+  if (hasRot) {
+    const rad = ((transform.rotationDeg * Math.PI) / 180).toFixed(4);
+    ops.push(`rotate=${rad}:c=black:ow=iw:oh=ih`);
+  }
+
+  const sc = Math.max(0.5, Math.min(3, transform.scale));
+  const scaledW = Math.max(16, Math.round((width * sc) / 2) * 2);
+  const scaledH = Math.max(16, Math.round((height * sc) / 2) * 2);
+  const dx = Math.round(transform.offsetX * width);
+  const dy = Math.round(transform.offsetY * height);
+
+  if (sc >= 1) {
+    const cropX = Math.max(0, Math.min(scaledW - width, Math.round((scaledW - width) / 2 - dx)));
+    const cropY = Math.max(0, Math.min(scaledH - height, Math.round((scaledH - height) / 2 - dy)));
+    ops.push(`scale=${scaledW}:${scaledH}`, `crop=${width}:${height}:${cropX}:${cropY}`);
+  } else {
+    const padX = Math.max(0, Math.min(width - scaledW, Math.round((width - scaledW) / 2 + dx)));
+    const padY = Math.max(0, Math.min(height - scaledH, Math.round((height - scaledH) / 2 + dy)));
+    ops.push(`scale=${scaledW}:${scaledH}`, `pad=${width}:${height}:${padX}:${padY}:black`);
+  }
+
+  return ops;
 }
 
 function buildMotionFilter(
@@ -122,7 +190,15 @@ function escapeFfmpegFilterPath(filePath: string): string {
 }
 
 export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRenderPlan {
-  const { project, quality, assetsById, filePathsById, outputPath, assSubtitlePath } = input;
+  const {
+    project,
+    quality,
+    assetsById,
+    filePathsById,
+    outputPath,
+    assSubtitlePath,
+    builtinsDir,
+  } = input;
   const { width, height } = getAspectDimensions(project.aspectRatio, quality);
   const fps = project.fps || 30;
   const layout = computeTimelineLayout(project);
@@ -131,7 +207,7 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
   const filterParts: string[] = [];
   const audioBranches: string[] = [];
 
-  // 1. Add visual inputs (one per timeline slot for clean trim/speed isolation)
+  // 1. Add visual inputs (one per timeline slot for clean trim/speed/reverse isolation)
   layout.slots.forEach((slotLayout, idx) => {
     const { slot, rawDurationSec } = slotLayout;
     const asset = assetsById.get(slot.assetId);
@@ -143,13 +219,32 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
     const sourceSpan = Math.max(0.2, slot.sourceEndSec - slot.sourceStartSec);
 
     if (asset.kind === "image") {
-      inputArgs.push("-loop", "1", "-framerate", String(fps), "-t", String(rawDurationSec), "-i", filePath);
+      inputArgs.push(
+        "-loop",
+        "1",
+        "-framerate",
+        String(fps),
+        "-t",
+        String(rawDurationSec),
+        "-i",
+        filePath
+      );
     } else {
-      inputArgs.push("-ss", String(slot.sourceStartSec), "-t", String(sourceSpan), "-i", filePath);
+      inputArgs.push(
+        "-ss",
+        String(slot.sourceStartSec),
+        "-t",
+        String(sourceSpan),
+        "-i",
+        filePath
+      );
     }
 
     const vfOps: string[] = [];
     if (asset.kind === "video") {
+      if (slot.reversed) {
+        vfOps.push("reverse");
+      }
       if (Math.abs(slot.speed - 1) >= 0.02) {
         vfOps.push(`setpts=(PTS-STARTPTS)/${slot.speed.toFixed(3)}`);
       } else {
@@ -159,15 +254,17 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
     }
 
     vfOps.push(...buildMotionFilter(slot.motion, width, height, fps, rawDurationSec));
+    vfOps.push(...buildTransformFilter(slot.transform, width, height));
     vfOps.push(...filterChainForPreset(slot.filter));
+    vfOps.push(...filterChainForAdjust(slot.adjust));
     vfOps.push(`fps=${fps}`, "settb=1/1000", "setsar=1", "format=yuv420p");
 
     filterParts.push(`[${idx}:v]${vfOps.join(",")}[v${idx}]`);
 
-    // Keep original clip audio if enabled and stream exists
     if (asset.kind === "video" && asset.hasAudio && !slot.muteOriginalAudio && slot.volume > 0) {
       const delayMs = Math.max(0, Math.round(slotLayout.timelineStartSec * 1000));
       const afOps = [
+        ...(slot.reversed ? ["areverse"] : []),
         ...buildAtempoChain(slot.speed),
         `volume=${slot.volume.toFixed(2)}`,
         `adelay=${delayMs}|${delayMs}`,
@@ -207,7 +304,50 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
     currentVideoLabel = nextLabel;
   }
 
-  // 3. Burn in ASS subtitles/text overlays if present
+  let nextInputIdx = layout.slots.length;
+  const finalTotalSec = Math.max(0.5, Number(currentDuration.toFixed(3)));
+
+  // 3. Composite SVG stickers if present
+  const stickers = project.stickers || [];
+  if (stickers.length > 0 && builtinsDir) {
+    fs.mkdirSync(builtinsDir, { recursive: true });
+    stickers.forEach((st, idx) => {
+      const item = getStickerById(st.stickerId);
+      const svgPath = path.join(builtinsDir, `sticker-${item.id}.svg`);
+      if (!fs.existsSync(svgPath)) {
+        fs.writeFileSync(svgPath, item.svg, "utf8");
+      }
+
+      const stickerIn = nextInputIdx++;
+      inputArgs.push(
+        "-loop",
+        "1",
+        "-framerate",
+        String(fps),
+        "-t",
+        String(finalTotalSec),
+        "-i",
+        svgPath
+      );
+
+      const targetStickerW = Math.max(48, Math.round((width * 0.22 * st.scale) / 2) * 2);
+      const rotOp =
+        Math.abs(st.rotationDeg) > 0.5
+          ? `,rotate=${((st.rotationDeg * Math.PI) / 180).toFixed(4)}:c=none:ow=rotw(iw):oh=roth(ih)`
+          : "";
+      filterParts.push(
+        `[${stickerIn}:v]format=rgba,scale=${targetStickerW}:-2${rotOp}[stk${idx}]`
+      );
+
+      const outLabel = `vst${idx}`;
+      filterParts.push(
+        `[${currentVideoLabel}][stk${idx}]overlay=x='round(${st.xNorm.toFixed(3)}*W-w/2)':y='round(${st.yNorm.toFixed(3)}*H-h/2)':enable='between(t,${st.startSec.toFixed(2)},${st.endSec.toFixed(2)})'[${outLabel}]`
+      );
+      currentVideoLabel = outLabel;
+    });
+  }
+
+  // 4. Burn in ASS subtitles/text overlays if present
   if (assSubtitlePath && project.overlays.length > 0) {
     filterParts.push(
       `[${currentVideoLabel}]ass=${escapeFfmpegFilterPath(assSubtitlePath)}[vout]`
@@ -215,36 +355,58 @@ export function buildFfmpegRenderPlan(input: BuildRenderPlanInput): FfmpegRender
     currentVideoLabel = "vout";
   }
 
-  // 4. Add background music track or silent fallback audio stream
-  let nextInputIdx = layout.slots.length;
-  const finalTotalSec = Math.max(0.5, Number(currentDuration.toFixed(3)));
+  // 5. Add multi-track audio (BGM, SFX, Voiceovers)
+  const audioTracks = getProjectAudioTracks(project);
+  audioTracks.forEach((track, idx) => {
+    const audioPath = filePathsById.get(track.assetId);
+    if (!audioPath) return;
 
-  if (project.audioTrack) {
-    const musicPath = filePathsById.get(project.audioTrack.assetId);
-    if (musicPath) {
+    const remainingTotal = finalTotalSec - (track.timelineStartSec || 0);
+    if (remainingTotal <= 0.05) return;
+
+    const audioIn = nextInputIdx++;
+    const clipDur = Math.max(
+      0.2,
+      Math.min(track.durationSec ?? remainingTotal, remainingTotal)
+    );
+
+    if (track.kind === "bgm") {
       inputArgs.push(
         "-stream_loop",
         "-1",
         "-ss",
-        String(project.audioTrack.startOffsetSec || 0),
+        String(track.startOffsetSec || 0),
         "-t",
-        String(finalTotalSec),
+        String(clipDur),
         "-i",
-        musicPath
+        audioPath
       );
-
-      const fadeOutStart = Math.max(0, finalTotalSec - (project.audioTrack.fadeOutSec || 0.6));
-      const afOps = [
-        `volume=${project.audioTrack.volume.toFixed(2)}`,
-        `afade=t=in:st=0:d=${(project.audioTrack.fadeInSec || 0.2).toFixed(2)}`,
-        `afade=t=out:st=${fadeOutStart.toFixed(2)}:d=${(project.audioTrack.fadeOutSec || 0.6).toFixed(2)}`,
-        "aformat=sample_rates=44100:channel_layouts=stereo",
-      ];
-      filterParts.push(`[${nextInputIdx}:a]${afOps.join(",")}[abgm]`);
-      audioBranches.push("[abgm]");
-      nextInputIdx += 1;
+    } else {
+      inputArgs.push(
+        "-ss",
+        String(track.startOffsetSec || 0),
+        "-t",
+        String(clipDur),
+        "-i",
+        audioPath
+      );
     }
-  }
+
+    const fadeIn = Math.min(clipDur * 0.4, track.fadeInSec || 0);
+    const fadeOut = Math.min(clipDur * 0.4, track.fadeOutSec || 0);
+    const fadeOutStart = Math.max(0, clipDur - fadeOut);
+    const delayMs = Math.max(0, Math.round((track.timelineStartSec || 0) * 1000));
+
+    const afOps: string[] = [`volume=${track.volume.toFixed(2)}`];
+    if (fadeIn > 0.02) afOps.push(`afade=t=in:st=0:d=${fadeIn.toFixed(2)}`);
+    if (fadeOut > 0.02) afOps.push(`afade=t=out:st=${fadeOutStart.toFixed(2)}:d=${fadeOut.toFixed(2)}`);
+    if (delayMs > 0) afOps.push(`adelay=${delayMs}|${delayMs}`);
+    afOps.push("aformat=sample_rates=44100:channel_layouts=stereo");
+
+    const branchLabel = `atrk${idx}`;
+    filterParts.push(`[${audioIn}:a]${afOps.join(",")}[${branchLabel}]`);
+    audioBranches.push(`[${branchLabel}]`);
+  });
 
   if (audioBranches.length === 0) {
     inputArgs.push(

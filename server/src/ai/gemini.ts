@@ -7,6 +7,7 @@ import {
   CutProjectSchema,
   type AutoEditRequest,
   type CutProject,
+  type CutProjectInput,
   type MediaAsset,
 } from "@cutflow/shared";
 import { createGeminiVideoProxy } from "../media/probe.js";
@@ -119,7 +120,9 @@ export async function generateGeminiCutProject(params: {
     .map((id) => assetsById.get(id))
     .filter((a): a is MediaAsset => Boolean(a && a.kind !== "audio"));
 
-  const audioAssets = Array.from(assetsById.values()).filter((a) => a.kind === "audio");
+  const audioAssets = Array.from(assetsById.values()).filter(
+    (a) => a.kind === "audio" && a.audioCategory !== "sfx"
+  );
   const selectedAudio = request.audioAssetId
     ? assetsById.get(request.audioAssetId)
     : audioAssets[0];
@@ -268,7 +271,22 @@ export async function generateGeminiCutProject(params: {
       (parsed.audioAssetId ? assetsById.get(parsed.audioAssetId) : undefined) ??
       selectedAudio;
 
-    const draft: CutProject = {
+    const audioTrackObj = chosenAudio
+      ? {
+          id: "aud-bgm-1",
+          kind: "bgm" as const,
+          assetId: chosenAudio.id,
+          title: chosenAudio.originalName,
+          timelineStartSec: 0,
+          startOffsetSec: 0,
+          volume: 0.85,
+          fadeInSec: 0.2,
+          fadeOutSec: 0.7,
+          beatMarkersSec: chosenAudio.beatMarkersSec,
+        }
+      : undefined;
+
+    const draft: CutProjectInput = {
       id: request.previousProject?.id ?? crypto.randomUUID(),
       title: parsed.title || "AI Cut Edit",
       templateId: parsed.templateId || "hype-zoom",
@@ -286,17 +304,8 @@ export async function generateGeminiCutProject(params: {
         ...o,
         id: `txt-${idx + 1}`,
       })),
-      audioTrack: chosenAudio
-        ? {
-            assetId: chosenAudio.id,
-            title: chosenAudio.originalName,
-            startOffsetSec: 0,
-            volume: 0.85,
-            fadeInSec: 0.2,
-            fadeOutSec: 0.7,
-            beatMarkersSec: chosenAudio.beatMarkersSec,
-          }
-        : undefined,
+      audioTrack: audioTrackObj,
+      audioTracks: audioTrackObj ? [audioTrackObj] : [],
     };
 
     const sanitized = sanitizeCutProject(draft, assetsById);

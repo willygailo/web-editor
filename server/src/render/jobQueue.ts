@@ -88,6 +88,7 @@ export class RenderJobQueue {
         filePathsById,
         outputPath,
         assSubtitlePath: activeAssPath,
+        builtinsDir: this.config.builtinsDir,
       });
 
       const layout = computeTimelineLayout(project);
