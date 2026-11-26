@@ -1,9 +1,14 @@
 import type { FastifyInstance } from "fastify";
-import { AutoEditRequestSchema, SaveTemplateRequestSchema } from "@cutflow/shared";
+import {
+  AutoEditRequestSchema,
+  SaveTemplateRequestSchema,
+  TalkingHeadCutRequestSchema,
+} from "@cutflow/shared";
 import type { ServerConfig } from "../config.js";
 import type { MediaStore } from "../media/store.js";
 import type { TemplatesStore } from "../media/templatesStore.js";
 import { runAutoEditDirector } from "../ai/director.js";
+import { runTalkingHeadAutoCut } from "../ai/talkingHead.js";
 
 export function registerAiRoutes(
   app: FastifyInstance,
@@ -76,6 +81,44 @@ export function registerAiRoutes(
     } catch (err) {
       return reply.status(400).send({
         error: err instanceof Error ? err.message : "Auto-edit failed",
+      });
+    }
+  });
+
+  app.post("/api/projects/talking-head-cut", async (request, reply) => {
+    const parsed = TalkingHeadCutRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: "Invalid talking-head cut payload",
+        details: parsed.error.flatten(),
+      });
+    }
+
+    const entry = store.get(parsed.data.assetId);
+    if (!entry) {
+      return reply.status(404).send({ error: "Selected media clip not found" });
+    }
+
+    const anthropicHeader = request.headers["x-anthropic-api-key"];
+    const anthropicModelHeader = request.headers["x-anthropic-model"];
+    const workspaceHeader = request.headers["x-anthropic-workspace-id"];
+
+    try {
+      const result = await runTalkingHeadAutoCut({
+        request: parsed.data,
+        asset: entry.asset,
+        filePath: entry.filePath,
+        config,
+        userAnthropicKey: typeof anthropicHeader === "string" ? anthropicHeader : undefined,
+        userAnthropicModel:
+          typeof anthropicModelHeader === "string" ? anthropicModelHeader : undefined,
+        userAnthropicWorkspaceId:
+          typeof workspaceHeader === "string" ? workspaceHeader : undefined,
+      });
+      return result;
+    } catch (err) {
+      return reply.status(400).send({
+        error: err instanceof Error ? err.message : "Auto talking-head cut failed",
       });
     }
   });

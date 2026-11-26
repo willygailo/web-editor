@@ -43,6 +43,7 @@ import {
   fetchTemplates,
   loadSamplePack,
   runAutoEdit,
+  runTalkingHeadCut,
   saveCustomTemplate,
   transcribeMedia,
   uploadMediaFiles,
@@ -82,6 +83,7 @@ export function App() {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isLoadingDemo, setIsLoadingDemo] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isTalkingHeadCutting, setIsTalkingHeadCutting] = useState(false);
   const [bannerError, setBannerError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
 
@@ -384,6 +386,50 @@ export function App() {
       setBannerError(err instanceof Error ? err.message : "Auto-edit failed");
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const selectedTalkingHeadAsset = useMemo(() => {
+    for (const id of selectedVisualIds) {
+      const a = assetsById.get(id);
+      if (a && a.kind === "video") return a;
+    }
+    return null;
+  }, [selectedVisualIds, assetsById]);
+
+  const triggerTalkingHeadCut = async () => {
+    if (!selectedTalkingHeadAsset) {
+      setBannerError("Select or upload a talking-head video clip first.");
+      return;
+    }
+
+    setBannerError(null);
+    setWarnings([]);
+    setIsTalkingHeadCutting(true);
+    setIsPlaying(false);
+
+    try {
+      const talkingHeadMode =
+        mode === "offline" ? "offline" : mode === "claude" ? "claude" : "auto";
+      const res = await runTalkingHeadCut(
+        {
+          assetId: selectedTalkingHeadAsset.id,
+          mode: talkingHeadMode,
+        },
+        {
+          anthropicApiKey: anthropicKey,
+          anthropicModel,
+          anthropicWorkspaceId,
+        }
+      );
+      store.loadProject(res.project);
+      setCurrentTime(0);
+      setWarnings(res.warnings);
+      setIsPlaying(true);
+    } catch (err) {
+      setBannerError(err instanceof Error ? err.message : "Auto talking-head cut failed");
+    } finally {
+      setIsTalkingHeadCutting(false);
     }
   };
 
@@ -713,6 +759,9 @@ export function App() {
               prompt={prompt}
               onPromptChange={setPrompt}
               onSubmit={(override) => void triggerAutoEdit(override)}
+              onAutoTalkingHeadCut={() => void triggerTalkingHeadCut()}
+              canTalkingHeadCut={Boolean(selectedTalkingHeadAsset)}
+              isTalkingHeadCutting={isTalkingHeadCutting}
               isGenerating={isGenerating}
               disabled={selectedVisualIds.length === 0}
               mode={mode}
@@ -857,6 +906,9 @@ export function App() {
                   prompt={prompt}
                   onPromptChange={setPrompt}
                   onSubmit={(override) => void triggerAutoEdit(override)}
+                  onAutoTalkingHeadCut={() => void triggerTalkingHeadCut()}
+                  canTalkingHeadCut={Boolean(selectedTalkingHeadAsset)}
+                  isTalkingHeadCutting={isTalkingHeadCutting}
                   isGenerating={isGenerating}
                   disabled={selectedVisualIds.length === 0}
                   mode={mode}
@@ -977,13 +1029,17 @@ export function App() {
         health={health}
       />
 
-      {isGenerating && (
+      {(isGenerating || isTalkingHeadCutting) && (
         <div
           aria-live="polite"
           className="fixed right-4 bottom-4 z-40 inline-flex items-center gap-2 rounded-full border border-cyan-400/50 bg-[#111520]/95 px-4 py-2 text-xs font-bold text-cyan-200 shadow-xl backdrop-blur"
         >
           <Sparkles className="size-4 animate-pulse text-cyan-400" aria-hidden="true" />
-          <span>AI Director is cutting your template...</span>
+          <span>
+            {isTalkingHeadCutting
+              ? "Auto-cutting dead air, fillers & retakes (WhisperX + AI)..."
+              : "AI Director is cutting your template..."}
+          </span>
         </div>
       )}
     </div>

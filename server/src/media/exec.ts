@@ -97,7 +97,12 @@ export function getFfprobeBin(): string {
 export function runProcess(
   bin: string,
   args: string[],
-  options?: { timeoutMs?: number; onStdoutLine?: (line: string) => void; onStderrLine?: (line: string) => void }
+  options?: {
+    timeoutMs?: number;
+    env?: NodeJS.ProcessEnv;
+    onStdoutLine?: (line: string) => void;
+    onStderrLine?: (line: string) => void;
+  }
 ): Promise<ProcessResult> {
   const resolvedBin =
     bin === "ffmpeg" ? getFfmpegBin() : bin === "ffprobe" ? getFfprobeBin() : bin;
@@ -106,6 +111,7 @@ export function runProcess(
     const child = spawn(resolvedBin, args, {
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
+      env: options?.env ? { ...process.env, ...options.env } : process.env,
     });
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];

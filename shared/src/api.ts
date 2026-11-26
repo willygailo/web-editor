@@ -87,3 +87,21 @@ export const TranscribeResponseSchema = z.object({
   source: z.enum(["gemini", "offline"]),
 });
 export type TranscribeResponse = z.infer<typeof TranscribeResponseSchema>;
+
+export const TalkingHeadCutRequestSchema = z.object({
+  assetId: z.string().min(1),
+  mode: z.enum(["auto", "claude", "offline"]).default("auto"),
+  language: z.string().max(16).optional(),
+});
+export type TalkingHeadCutRequest = z.infer<typeof TalkingHeadCutRequestSchema>;
+
+export const TalkingHeadCutResponseSchema = z.object({
+  project: CutProjectSchema,
+  segmentsCount: z.number().int().positive(),
+  originalDurationSec: z.number().positive(),
+  editedDurationSec: z.number().positive(),
+  removedSec: z.number().min(0),
+  source: z.enum(["claude", "offline"]),
+  warnings: z.array(z.string()).default([]),
+});
+export type TalkingHeadCutResponse = z.infer<typeof TalkingHeadCutResponseSchema>;

@@ -7,6 +7,8 @@ import type {
   RenderJob,
   RenderRequest,
   SaveTemplateRequest,
+  TalkingHeadCutRequest,
+  TalkingHeadCutResponse,
   TranscribeResponse,
   WaveformResponse,
 } from "@cutflow/shared";
@@ -165,6 +167,36 @@ export interface UserAiKeys {
   anthropicWorkspaceId?: string;
   geminiApiKey?: string;
   geminiModel?: string;
+}
+
+export async function runTalkingHeadCut(
+  req: TalkingHeadCutRequest,
+  userKeys?: UserAiKeys
+): Promise<TalkingHeadCutResponse> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (userKeys?.anthropicApiKey?.trim()) {
+    headers["x-anthropic-api-key"] = userKeys.anthropicApiKey.trim();
+  }
+  if (userKeys?.anthropicModel?.trim()) {
+    headers["x-anthropic-model"] = userKeys.anthropicModel.trim();
+  }
+  if (userKeys?.anthropicWorkspaceId?.trim()) {
+    headers["x-anthropic-workspace-id"] = userKeys.anthropicWorkspaceId.trim();
+  }
+
+  const res = await fetch("/api/projects/talking-head-cut", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(req),
+  });
+
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error || "Auto talking-head cut failed");
+  }
+  return res.json();
 }
 
 export async function runAutoEdit(

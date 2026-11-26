@@ -1,5 +1,5 @@
 import type { PlatformPreset } from "@cutflow/shared";
-import { Sparkles, Wand2 } from "lucide-react";
+import { Scissors, Sparkles, Wand2 } from "lucide-react";
 
 const QUICK_PROMPTS = [
   {
@@ -34,6 +34,9 @@ interface PromptBarProps {
   prompt: string;
   onPromptChange: (val: string) => void;
   onSubmit: (overridePrompt?: string) => void;
+  onAutoTalkingHeadCut?: () => void;
+  canTalkingHeadCut?: boolean;
+  isTalkingHeadCutting?: boolean;
   isGenerating: boolean;
   disabled: boolean;
   mode: AiMode;
@@ -47,6 +50,9 @@ export function PromptBar({
   prompt,
   onPromptChange,
   onSubmit,
+  onAutoTalkingHeadCut,
+  canTalkingHeadCut = false,
+  isTalkingHeadCutting = false,
   isGenerating,
   disabled,
   mode,
@@ -123,12 +129,24 @@ export function PromptBar({
         />
         <button
           type="submit"
-          disabled={disabled || isGenerating || !prompt.trim()}
+          disabled={disabled || isGenerating || isTalkingHeadCutting || !prompt.trim()}
           className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 px-3.5 py-2 text-sm font-bold text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
         >
           <Wand2 className="size-4" aria-hidden="true" />
           <span>{isGenerating ? "Editing..." : hasProject ? "Remix" : "Auto Edit"}</span>
         </button>
+        {onAutoTalkingHeadCut && (
+          <button
+            type="button"
+            onClick={onAutoTalkingHeadCut}
+            disabled={!canTalkingHeadCut || isGenerating || isTalkingHeadCutting}
+            title="Automatically transcribe with WhisperX + Claude AI and remove dead air, fillers & retakes into trimmable clips"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-emerald-400/50 bg-emerald-500/15 px-3 py-2 text-xs font-bold text-emerald-200 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Scissors className="size-3.5" aria-hidden="true" />
+            <span>{isTalkingHeadCutting ? "Auto Cutting..." : "Auto Jump-Cut"}</span>
+          </button>
+        )}
       </div>
 
       <div className="studio-tablist pb-0.5" aria-label="Quick edit prompt suggestions">

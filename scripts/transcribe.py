@@ -51,11 +51,11 @@ def source_signature(raw_path: Path) -> dict[str, object]:
     }
 
 
-def already_transcribed(sig: dict[str, object]) -> bool:
-    if not WORDS_JSON.is_file():
+def already_transcribed(sig: dict[str, object], words_json: Path) -> bool:
+    if not words_json.is_file():
         return False
     try:
-        data = json.loads(WORDS_JSON.read_text(encoding="utf-8"))
+        data = json.loads(words_json.read_text(encoding="utf-8"))
     except Exception:
         return False
     prev = data.get("source")
@@ -154,21 +154,25 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Transcribe raw talking-head footage with WhisperX large-v3.")
     parser.add_argument("raw_clip", nargs="?", help="Path to raw video file (defaults to sole clip in raw/).")
     parser.add_argument("--language", default=None, help="Optional ISO language code (auto-detected if omitted).")
+    parser.add_argument("--out", default=str(WORDS_JSON), help="Output words.json path.")
+    parser.add_argument("--wav", default=str(AUDIO_WAV), help="Intermediate 16 kHz mono WAV path.")
     args = parser.parse_args()
 
     raw_path = find_raw_clip(args.raw_clip)
+    out_path = Path(args.out).expanduser().resolve()
+    wav_path = Path(args.wav).expanduser().resolve()
     sig = source_signature(raw_path)
 
-    if already_transcribed(sig):
-        data = json.loads(WORDS_JSON.read_text(encoding="utf-8"))
+    if already_transcribed(sig, out_path):
+        data = json.loads(out_path.read_text(encoding="utf-8"))
         print(
-            f"[skip] {WORDS_JSON} already exists for {raw_path.name} "
+            f"[skip] {out_path} already exists for {raw_path.name} "
             f"({len(data.get('words', []))} words). Never transcribing the same footage twice."
         )
         return
 
-    extract_wav(raw_path, AUDIO_WAV)
-    out = run_whisperx(AUDIO_WAV, args.language)
+    extract_wav(raw_path, wav_path)
+    out = run_whisperx(wav_path, args.language)
     words = flatten_words(out["segments"])
 
     payload = {
@@ -180,9 +184,9 @@ def main() -> None:
         "segments": out["segments"],
         "words": words,
     }
-    TRANSCRIPT_DIR.mkdir(parents=True, exist_ok=True)
-    WORDS_JSON.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(f"[done] Wrote {len(words)} aligned words -> {WORDS_JSON}")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(f"[done] Wrote {len(words)} aligned words -> {out_path}")
 
 
 if __name__ == "__main__":

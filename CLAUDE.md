@@ -16,7 +16,12 @@
 - Starter files live strictly in `raw/`, `transcript/`, `scripts/`, `vendor/`, `CLAUDE.md`, and root outputs (`cut.mp4` / `cut.fcpxml`) without modifying `cutflow-ai` source files.
 
 ## Target Editing App
-- **CapCut / DaVinci Resolve Free / No editing app** → Step 3 (live connector) skipped; Step 6 renders `./cut.mp4` via single-pass FFmpeg (`-fps_mode passthrough`) and verifies exact frame count & duration against `transcript/cuts.json`.
+- **CapCut / DaVinci Resolve Free / No editing app** + **CutFlow AI Web App**
+- **100% Automatic CLI / Folder Watcher**:
+  - One-shot: `pnpm auto-edit` (or `python3 scripts/auto_edit.py` — add `--review` to pause and approve `cuts.json` first)
+  - Continuous `raw/` watcher: `pnpm auto-watch` (or `python3 scripts/auto_edit.py --watch`)
+  - Outputs saved to `output/<stem>_cut.mp4` and mirrored to `./cut.mp4` (single-pass FFmpeg `-fps_mode passthrough`, frame-verified with `ffprobe`).
+- **CutFlow AI Web App**: 1-click **Auto Jump-Cut** button calls `POST /api/projects/talking-head-cut` and creates a real multi-clip trimmable timeline.
 
 ## Raw Footage Notes
 - *(Populated once raw clip is placed in `raw/` and probed with `scripts/build_cut.py probe`)*
