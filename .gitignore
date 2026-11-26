@@ -19,6 +19,22 @@ tmp/
 .env.*
 !.env.example
 
+# Python bytecode & local environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+
+# AI Talking-Head Auto-Editor working directories & outputs
+raw/
+transcript/
+output/
+vendor/
+cut.mp4
+cut.fcpxml
+*.fcpbundle/
+.mcp.json
+
 # Runtime media storage, proxies, built-in audio/stickers, and metadata
 data/
 uploads/

@@ -87,6 +87,10 @@
   - **Gemini Multimodal (`gemini-4-hydrogen`)**: Analyzes uploaded video proxies, images, beats, and speech via `@google/genai` `Interactions API`.
   - **Offline Smart Engine**: Works with **zero API keys** using `ffprobe`, scene highlight detection, `silencedetect`, PCM beat/energy peak analysis, auto-SFX, and English/Taglish rules.
 
+### 🎙️ 100% Automatic AI Talking-Head Jump-Cut Editor (WhisperX + Claude)
+- **1-Click Web Button (`Auto Jump-Cut`)**: Select any uploaded talking-head video clip and click **Auto Jump-Cut** in the AI bar (`POST /api/projects/talking-head-cut`) to transcribe with local **WhisperX `large-v3`** (cached per clip), remove dead air, fillers (`um`, `uh`, Tagalog/Taglish hesitations), false starts, and retakes using **Claude AI** (with automatic offline word-timestamp fallback), and populate **individual trimmable clips** on the timeline.
+- **Drop-and-Forget Folder Watcher (`pnpm auto-watch`)**: Run `pnpm auto-watch` (or one-shot `pnpm auto-edit`) and drop raw talking-head videos into `raw/`. The pipeline automatically probes exact FPS/orientation, transcribes once (never duplicates), computes non-overlapping padded cuts (`+0.08 s` / `-0.12 s`), renders a frame-accurate H.264/AAC MP4 (`-fps_mode passthrough`) to `output/<name>_cut.mp4` and `./cut.mp4`, and runs frame-for-frame `ffprobe` verification. Pass `--review` (`python3 scripts/auto_edit.py --review`) whenever you want to inspect and approve `transcript/cuts.json` before rendering.
+
 ### 📱 Phone & Laptop PWA
 - **Phone**: CapCut-style single-row scrollable bottom tool bar (`AI Magic`, `Clips`, `Audio`, `Templates`, `Edit Clip`, `Adjust`, `Text`, `Stickers`), compact preview stage, safe-area insets, and **Add to Home Screen**.
 - **Laptop**: 3-pane pro layout (`Clips / Music & SFX / Templates` · `Live Preview` · `Inspector`) + full multi-track timeline.
@@ -97,9 +101,10 @@
 
 1. **Start the Studio**: Run `pnpm dev` and open `http://localhost:5173` on laptop (or `http://<your-laptop-lan-ip>:5173` on phone over the same Wi-Fi).
 2. **Add Media**: Drag & drop videos/photos/audio into **Clips**, or tap **Demo Clips** to generate 3 animated sample videos immediately.
-3. **Create an Edit (2 Ways)**:
+3. **Create an Edit (3 Ways)**:
    - **Use a Cut Template**: Open **Templates → Use Template**, assign your clips to each blueprint slot, edit the hook caption & beat track, and click **Apply**.
    - **AI Auto-Edit**: Select clips in the bin, pick a **Platform** target pill (`Auto`, `TikTok 9:16`, `IG Reels`, `IG Feed 4:5`, `YT Shorts`, `YT 16:9`, `Promo 1:1`), write a prompt (e.g. *"Gawa ka ng hype 15s TikTok viral hook edit with pop captions"*), choose `Auto` / `Claude 5.5` / `Gemini` / `Offline`, and click **Auto Edit**.
+   - **1-Click Auto Talking-Head Jump-Cut**: Select a talking-head clip and click **Auto Jump-Cut** to automatically remove dead air, fillers, and retakes into trimmable timeline clips — or run `pnpm auto-watch` and drop raw clips straight into `raw/` for hands-free `./cut.mp4` exports.
 4. **Fine-Tune Like CapCut**:
    - **Timeline**: Scrub to any timestamp and press **Split** (`S`), drag clip edges to trim duration, tap transition badges between clips, or click **Snap Beats**.
    - **Music & SFX**: Layer BGM, click **Listen** to check **Song Start** or tap **Skip Intro →** to jump past quiet intros, insert SFX hits at the playhead, record a **Voiceover**, or extract audio from a video clip.
@@ -173,6 +178,12 @@ Runs natively on **Windows (10/11)**, **macOS (Apple Silicon & Intel)**, and **L
 - **Node.js** `>= 22`
 - **pnpm** (`corepack enable` or `npm install -g pnpm`)
 - **FFmpeg** & **ffprobe** available in `PATH` (or configured via `FFMPEG_PATH` / `FFPROBE_PATH`)
+- **Optional (for WhisperX Talking-Head Auto Jump-Cut)**: `uv` + reusable Python 3.11 WhisperX venv:
+  ```bash
+  uv venv ~/.cache/video-editor/whisperx-venv --python 3.11
+  uv pip install --python ~/.cache/video-editor/whisperx-venv/bin/python whisperx
+  ```
+  *(On Windows Git Bash, use `Scripts/python.exe` instead of `bin/python`.)*
 
 <details>
 <summary><strong>💻 OS-Specific Install Commands (Windows, macOS &amp; Linux)</strong></summary>
@@ -293,6 +304,9 @@ Full reference of variables supported in `.env` (see [`.env.example`](./.env.exa
 | `pnpm build` | Builds `@cutflow/shared`, `@cutflow/server`, and `@cutflow/web` (`dist/`) |
 | `pnpm test` | Runs Vitest suites across `shared` and `server` (includes real FFmpeg MP4 render & E2E API tests) |
 | `pnpm typecheck` | Runs strict TypeScript checks across all workspace packages |
+| `pnpm auto-edit` | Runs one-shot automatic WhisperX + Claude talking-head jump-cut on unprocessed clips in `raw/` (`--review` for approval pause) |
+| `pnpm auto-watch` | Watches `raw/` continuously and auto-edits newly dropped talking-head clips to `output/<name>_cut.mp4` + `./cut.mp4` |
+| `python3 -m unittest scripts/test_auto_editor.py` | Runs Python unit & frame-accurate FFmpeg render tests for the talking-head auto-editor scripts |
 
 ---
 
@@ -304,8 +318,9 @@ Full reference of variables supported in `.env` (see [`.env.example`](./.env.exa
 ```text
 .
 ├── shared/    # @cutflow/shared — Zod EDL schemas, timeline layout math, template blueprints, sticker catalog, API DTOs
-├── server/    # @cutflow/server — Fastify API, ffprobe/waveform analysis, custom templates store, Claude/Gemini/Offline directors, FFmpeg compiler
-└── web/       # @cutflow/web    — Responsive React 19 PWA studio, Undo/Redo store, interactive Canvas preview, multi-track timeline, drawers & modals
+├── server/    # @cutflow/server — Fastify API, ffprobe/waveform analysis, custom templates store, Claude/Gemini/Offline directors, talking-head bridge, FFmpeg compiler
+├── web/       # @cutflow/web    — Responsive React 19 PWA studio, Undo/Redo store, interactive Canvas preview, multi-track timeline, drawers & modals
+└── scripts/   # Python AI talking-head pipeline — WhisperX transcription, Claude/offline jump-cut selector, frame-accurate FFmpeg builder & raw/ folder watcher
 ```
 
 ### API Endpoints
@@ -324,6 +339,7 @@ Full reference of variables supported in `.env` (see [`.env.example`](./.env.exa
 - `POST /api/templates` — Save a custom Cut Template preset
 - `DELETE /api/templates/:id` — Delete a saved custom template
 - `POST /api/projects/auto-edit` — Generate or refine a platform-targeted `CutProject` EDL with SFX cues & social captions (`auto`, `claude`, `gemini`, `offline`)
+- `POST /api/projects/talking-head-cut` — Transcribe via local WhisperX `large-v3` + auto jump-cut dead air, fillers & retakes (Claude AI + offline fallback) into individual trimmable timeline clips
 - `POST /api/render` — Enqueue server-side FFmpeg MP4 render (`720p` or `1080p`)
 - `GET /api/render/:id` / `GET /api/render/:id/events` — Poll or stream render job progress via SSE
 - `GET /api/render/:id/download` — Download rendered MP4
