@@ -16,7 +16,7 @@
 - Starter files live strictly in `raw/`, `transcript/`, `scripts/`, `vendor/`, `CLAUDE.md`, and root outputs (`cut.mp4` / `cut.fcpxml`) without modifying `cutflow-ai` source files.
 
 ## Target Editing App
-- *(Pending Step 2 answer from user)*
+- **CapCut / DaVinci Resolve Free / No editing app** → Step 3 (live connector) skipped; Step 6 renders `./cut.mp4` via single-pass FFmpeg (`-fps_mode passthrough`) and verifies exact frame count & duration against `transcript/cuts.json`.
 
 ## Raw Footage Notes
 - *(Populated once raw clip is placed in `raw/` and probed with `scripts/build_cut.py probe`)*
