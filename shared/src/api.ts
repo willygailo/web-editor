@@ -59,6 +59,8 @@ export const HealthResponseSchema = z.object({
   anthropicModel: z.string(),
   geminiConfigured: z.boolean(),
   geminiModel: z.string(),
+  higgsfieldConfigured: z.boolean().default(false),
+  higgsfieldMcpConfigured: z.boolean().default(false),
   assetsCount: z.number().int().nonnegative(),
 });
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;
@@ -88,10 +90,43 @@ export const TranscribeResponseSchema = z.object({
 });
 export type TranscribeResponse = z.infer<typeof TranscribeResponseSchema>;
 
+export const ImportUrlRequestSchema = z.object({
+  url: z.string().url(),
+  kind: z.enum(["video", "audio"]).default("video"),
+  section: z.string().max(48).optional(),
+  maxHeight: z.number().int().min(360).max(2160).default(1080),
+});
+export type ImportUrlRequest = z.infer<typeof ImportUrlRequestSchema>;
+
+export const PolishAudioRequestSchema = z.object({
+  denoise: z.enum(["ffmpeg", "fast", "studio"]).default("ffmpeg"),
+});
+export type PolishAudioRequest = z.infer<typeof PolishAudioRequestSchema>;
+
+export const HiggsfieldGenerateRequestSchema = z.object({
+  prompt: z.string().min(3).max(500),
+  kind: z.enum(["video", "image"]).default("video"),
+  model: z.string().min(1).max(120).default("kling"),
+  aspectRatio: AspectRatioSchema.default("9:16"),
+  durationSec: z.number().int().min(2).max(10).default(5),
+  imageUrl: z.string().url().optional(),
+});
+export type HiggsfieldGenerateRequest = z.infer<typeof HiggsfieldGenerateRequestSchema>;
+
+export const HiggsfieldGenerateResponseSchema = z.object({
+  asset: MediaAssetSchema,
+  requestId: z.string(),
+  modelUsed: z.string(),
+});
+export type HiggsfieldGenerateResponse = z.infer<typeof HiggsfieldGenerateResponseSchema>;
+
 export const TalkingHeadCutRequestSchema = z.object({
   assetId: z.string().min(1),
-  mode: z.enum(["auto", "claude", "offline"]).default("auto"),
+  mode: z.enum(["auto", "claude", "gemini", "offline"]).default("auto"),
   language: z.string().max(16).optional(),
+  autoCaptions: z.boolean().default(true),
+  autoPunchIn: z.boolean().default(true),
+  polishAudio: z.enum(["none", "fast", "studio"]).default("none"),
 });
 export type TalkingHeadCutRequest = z.infer<typeof TalkingHeadCutRequestSchema>;
 
@@ -101,7 +136,9 @@ export const TalkingHeadCutResponseSchema = z.object({
   originalDurationSec: z.number().positive(),
   editedDurationSec: z.number().positive(),
   removedSec: z.number().min(0),
-  source: z.enum(["claude", "offline"]),
+  source: z.enum(["claude", "gemini", "offline"]),
+  waveformRefined: z.boolean().default(false),
+  captionsAdded: z.number().int().nonnegative().default(0),
   warnings: z.array(z.string()).default([]),
 });
 export type TalkingHeadCutResponse = z.infer<typeof TalkingHeadCutResponseSchema>;

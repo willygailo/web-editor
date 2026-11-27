@@ -32,7 +32,11 @@ FILLER_WORDS = {
     "hmm",
     "hm",
     "mhm",
+    "ehh",
+    "uhh",
 }
+
+TAGLISH_HESITATIONS = {"ano", "eh", "parang"}
 
 
 def load_dotenv(env_path: Path) -> None:
@@ -103,7 +107,12 @@ def normalize_words(raw_words: list[dict]) -> list[dict]:
             start = 0.0
         if end < start:
             end = start + 0.04
-        cleaned.append({"word": text, "start": start, "end": end})
+        entry = {"word": text, "start": start, "end": end}
+        if item.get("speaker"):
+            entry["speaker"] = str(item["speaker"])
+        if isinstance(item.get("score"), (int, float)):
+            entry["score"] = float(item["score"])
+        cleaned.append(entry)
         last_t = max(last_t, end)
     return cleaned
 
@@ -238,14 +247,97 @@ def choose_spans_claude(
     return spans
 
 
+def choose_spans_gemini(
+    words: list[dict],
+    api_key: str,
+    model: str,
+) -> list[tuple[int, int]]:
+    lines = [
+        f"[{i}] {w['start']:.2f}-{w['end']:.2f} {w['word']}"
+        for i, w in enumerate(words)
+    ]
+    transcript_block = "\n".join(lines)
+
+    prompt = (
+        "You are an expert talking-head video rough-cut editor.\n"
+        "Given a word-level transcript with [index] start-end word, select ONLY the word spans to KEEP "
+        "so the video flows tightly and naturally.\n"
+        "Rules:\n"
+        "1. Cut dead air / long pauses (>= 0.45s silence between spoken phrases).\n"
+        "2. Cut filler words (um, uh, uhm, er, ah, hmm, and purely hesitant standalone Tagalog/Taglish stumbles).\n"
+        "3. Cut false starts, stumbles, restarts, and aborted sentences.\n"
+        "4. When the speaker repeats a line (retakes), keep ONLY the best complete take (usually the last).\n"
+        "5. Keep the speaker's personality and natural cadence.\n"
+        "6. Output STRICT JSON ONLY matching: {\"keep\": [{\"start_idx\": int, \"end_idx\": int}]}\n"
+        f"   - Inclusive, strictly increasing, non-overlapping indices within 0..{len(words) - 1}.\n\n"
+        + transcript_block
+    )
+
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        f"?key={api_key}"
+    )
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0,
+            "responseMimeType": "application/json",
+        },
+    }
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"content-type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=90) as resp:
+        body = json.loads(resp.read().decode("utf-8"))
+
+    candidates = body.get("candidates") or []
+    parts = ((candidates[0].get("content") or {}).get("parts") or []) if candidates else []
+    text_out = "\n".join(str(p.get("text", "")) for p in parts)
+    parsed = extract_json_object(text_out)
+    raw_keep = parsed.get("keep")
+    if not isinstance(raw_keep, list) or not raw_keep:
+        raise ValueError("Gemini returned empty 'keep' spans")
+
+    spans: list[tuple[int, int]] = []
+    n = len(words)
+    last_end = -1
+    for item in raw_keep:
+        s = int(item["start_idx"])
+        e = int(item["end_idx"])
+        if s < 0 or e >= n or e < s:
+            continue
+        if s <= last_end:
+            s = last_end + 1
+            if s > e:
+                continue
+        spans.append((s, e))
+        last_end = e
+
+    if not spans:
+        raise ValueError("No valid spans parsed from Gemini response")
+    return spans
+
+
 def choose_spans_offline(
     words: list[dict],
     silence_threshold: float = 0.55,
 ) -> list[tuple[int, int]]:
-    """Deterministic fallback: strip fillers, split dead air, and drop obvious short false starts."""
-    kept_indices = [
-        i for i, w in enumerate(words) if clean_token(w["word"]) not in FILLER_WORDS
-    ]
+    """Deterministic fallback: strip fillers, standalone Taglish stumbles, dead air, and short false starts."""
+    kept_indices: list[int] = []
+    n = len(words)
+    for i, w in enumerate(words):
+        tok = clean_token(w["word"])
+        if tok in FILLER_WORDS:
+            continue
+        if tok in TAGLISH_HESITATIONS:
+            prev_gap = (w["start"] - words[i - 1]["end"]) if i > 0 else 1.0
+            next_gap = (words[i + 1]["start"] - w["end"]) if i + 1 < n else 1.0
+            if prev_gap >= 0.22 and next_gap >= 0.22:
+                continue
+        kept_indices.append(i)
     if not kept_indices:
         return [(0, len(words) - 1)] if words else []
 
@@ -370,7 +462,8 @@ def main() -> None:
     parser.add_argument("words_json", nargs="?", default=str(DEFAULT_WORDS), help="Path to WhisperX words.json.")
     parser.add_argument("--raw", default=None, help="Optional raw video path for exact duration clamping.")
     parser.add_argument("--out", default=str(DEFAULT_CUTS), help="Output cuts.json path.")
-    parser.add_argument("--mode", choices=["auto", "claude", "offline"], default="auto")
+    parser.add_argument("--mode", choices=["auto", "claude", "gemini", "offline"], default="auto")
+    parser.add_argument("--speaker", default=None, help="Optional speaker ID filter when diarized (e.g. SPEAKER_00).")
     parser.add_argument("--pre-pad", type=float, default=0.08)
     parser.add_argument("--post-pad", type=float, default=0.12)
     parser.add_argument("--silence", type=float, default=0.55, help="Offline silence threshold in seconds.")
@@ -382,6 +475,10 @@ def main() -> None:
 
     data = json.loads(words_path.read_text(encoding="utf-8"))
     words = normalize_words(data.get("words") or [])
+    if args.speaker:
+        filtered_by_speaker = [w for w in words if w.get("speaker") == args.speaker]
+        if filtered_by_speaker:
+            words = filtered_by_speaker
     if not words:
         sys.exit(f"ERROR: No words found in {words_path}")
 
@@ -397,26 +494,39 @@ def main() -> None:
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     model = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5").strip() or "claude-sonnet-5-5"
     workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID", "").strip()
+    gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    gemini_model = os.environ.get("GEMINI_MODEL", "gemini-4-hydrogen").strip() or "gemini-4-hydrogen"
 
     source_used = "offline"
     warning: str | None = None
+    spans: list[tuple[int, int]] | None = None
 
     if args.mode in ("auto", "claude") and api_key:
         try:
             spans = choose_spans_claude(words, api_key=api_key, model=model, workspace_id=workspace_id)
             source_used = "claude"
         except Exception as exc:
-            if args.mode == "claude":
-                warning = f"Claude API unavailable ({exc}); fell back to offline word-timestamp cut engine."
-            else:
-                warning = f"Claude API unavailable ({exc}); used offline word-timestamp cut engine."
+            warning = f"Claude API unavailable ({exc}); trying fallback."
             print(f"[warn] {warning}", file=sys.stderr)
-            spans = choose_spans_offline(words, silence_threshold=args.silence)
-    else:
+
+    if spans is None and args.mode in ("auto", "gemini") and gemini_key:
+        try:
+            spans = choose_spans_gemini(words, api_key=gemini_key, model=gemini_model)
+            source_used = "gemini"
+        except Exception as exc:
+            msg = f"Gemini API unavailable ({exc}); used offline word-timestamp cut engine."
+            warning = f"{warning} {msg}".strip() if warning else msg
+            print(f"[warn] {msg}", file=sys.stderr)
+
+    if spans is None:
         if args.mode == "claude" and not api_key:
             warning = "ANTHROPIC_API_KEY not configured; used offline word-timestamp cut engine."
             print(f"[warn] {warning}", file=sys.stderr)
+        elif args.mode == "gemini" and not gemini_key:
+            warning = "GEMINI_API_KEY not configured; used offline word-timestamp cut engine."
+            print(f"[warn] {warning}", file=sys.stderr)
         spans = choose_spans_offline(words, silence_threshold=args.silence)
+        source_used = "offline"
 
     segments = build_padded_segments(
         words,

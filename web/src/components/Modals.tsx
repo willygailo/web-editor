@@ -297,12 +297,14 @@ interface SettingsModalProps {
   anthropicWorkspaceId: string;
   geminiKey: string;
   geminiModel: string;
+  higgsfieldKey: string;
   onSaveKeys: (keys: {
     anthropicKey: string;
     anthropicModel: string;
     anthropicWorkspaceId: string;
     geminiKey: string;
     geminiModel: string;
+    higgsfieldKey: string;
   }) => void;
   health: HealthResponse | null;
 }
@@ -315,6 +317,7 @@ export function SettingsModal({
   anthropicWorkspaceId,
   geminiKey,
   geminiModel,
+  higgsfieldKey,
   onSaveKeys,
   health,
 }: SettingsModalProps) {
@@ -324,6 +327,7 @@ export function SettingsModal({
   const [draftWorkspace, setDraftWorkspace] = useState(anthropicWorkspaceId);
   const [draftGemini, setDraftGemini] = useState(geminiKey);
   const [draftGeminiModel, setDraftGeminiModel] = useState(geminiModel);
+  const [draftHiggsfield, setDraftHiggsfield] = useState(higgsfieldKey);
 
   useEffect(() => {
     setDraftAnthropic(anthropicKey);
@@ -331,7 +335,8 @@ export function SettingsModal({
     setDraftWorkspace(anthropicWorkspaceId);
     setDraftGemini(geminiKey);
     setDraftGeminiModel(geminiModel);
-  }, [anthropicKey, anthropicModel, anthropicWorkspaceId, geminiKey, geminiModel, open]);
+    setDraftHiggsfield(higgsfieldKey);
+  }, [anthropicKey, anthropicModel, anthropicWorkspaceId, geminiKey, geminiModel, higgsfieldKey, open]);
 
   const activeClaudeModel = draftAnthropicModel.trim() || health?.anthropicModel || "claude-sonnet-5-5";
   const activeGeminiModel = draftGeminiModel.trim() || health?.geminiModel || "gemini-4-hydrogen";
@@ -383,6 +388,24 @@ export function SettingsModal({
                 : health?.geminiConfigured
                   ? "Configured in .env"
                   : "Not set"}
+            </span>
+          </div>
+          <div className="flex justify-between py-0.5">
+            <span>Higgsfield AI (B-Roll / MCP)</span>
+            <span
+              className={
+                draftHiggsfield.trim() || health?.higgsfieldConfigured || health?.higgsfieldMcpConfigured
+                  ? "text-emerald-400"
+                  : "text-amber-300"
+              }
+            >
+              {draftHiggsfield.trim()
+                ? "Browser BYOK"
+                : health?.higgsfieldConfigured
+                  ? "Cloud API (.env)"
+                  : health?.higgsfieldMcpConfigured
+                    ? "MCP Registered"
+                    : "Not set"}
             </span>
           </div>
         </div>
@@ -455,6 +478,18 @@ export function SettingsModal({
             />
           </label>
         </div>
+        <label className="flex flex-col gap-1">
+          <span className="font-semibold text-slate-200">
+            Optional Browser Higgsfield API Key (key_id:key_secret)
+          </span>
+          <input
+            type="password"
+            value={draftHiggsfield}
+            onChange={(e) => setDraftHiggsfield(e.target.value)}
+            placeholder="hf_key_id:hf_key_secret (or connect via https://mcp.higgsfield.ai/mcp)"
+            className="rounded-xl border border-slate-700 bg-[#090b10] px-3 py-1.5 text-xs text-slate-100 placeholder:text-slate-500"
+          />
+        </label>
         <span className="text-[11px] text-slate-400">
           Leave blank to use server `.env` defaults or built-in Offline Smart Auto-Edit.
         </span>
@@ -481,6 +516,7 @@ export function SettingsModal({
                 anthropicWorkspaceId: draftWorkspace.trim(),
                 geminiKey: draftGemini.trim(),
                 geminiModel: draftGeminiModel.trim(),
+                higgsfieldKey: draftHiggsfield.trim(),
               });
               dialogRef.current?.close();
             }}

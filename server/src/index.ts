@@ -43,6 +43,8 @@ export async function buildApp() {
       anthropicModel: config.anthropicModel,
       geminiConfigured: Boolean(config.geminiApiKey),
       geminiModel: config.geminiModel,
+      higgsfieldConfigured: Boolean(config.higgsfieldKey),
+      higgsfieldMcpConfigured: config.higgsfieldMcpConfigured,
       assetsCount: store.list().length,
     };
   });

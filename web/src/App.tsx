@@ -41,7 +41,10 @@ import {
   fetchHealth,
   fetchMedia,
   fetchTemplates,
+  generateHiggsfieldMedia,
+  importMediaFromUrl,
   loadSamplePack,
+  polishMediaAudio,
   runAutoEdit,
   runTalkingHeadCut,
   saveCustomTemplate,
@@ -82,6 +85,9 @@ export function App() {
 
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isLoadingDemo, setIsLoadingDemo] = useState(false);
+  const [isImportingUrl, setIsImportingUrl] = useState(false);
+  const [isGeneratingHiggsfield, setIsGeneratingHiggsfield] = useState(false);
+  const [polishingAssetId, setPolishingAssetId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isTalkingHeadCutting, setIsTalkingHeadCutting] = useState(false);
   const [bannerError, setBannerError] = useState<string | null>(null);
@@ -122,6 +128,13 @@ export function App() {
   const [geminiModel, setGeminiModel] = useState<string>(() => {
     try {
       return localStorage.getItem("cutflow_gemini_model") ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const [higgsfieldKey, setHiggsfieldKey] = useState<string>(() => {
+    try {
+      return localStorage.getItem("cutflow_higgsfield_key") ?? "";
     } catch {
       return "";
     }
@@ -240,12 +253,14 @@ export function App() {
     anthropicWorkspaceId: string;
     geminiKey: string;
     geminiModel: string;
+    higgsfieldKey: string;
   }) => {
     setAnthropicKey(keys.anthropicKey);
     setAnthropicModel(keys.anthropicModel);
     setAnthropicWorkspaceId(keys.anthropicWorkspaceId);
     setGeminiKey(keys.geminiKey);
     setGeminiModel(keys.geminiModel);
+    setHiggsfieldKey(keys.higgsfieldKey);
     try {
       if (keys.anthropicKey) localStorage.setItem("cutflow_anthropic_key", keys.anthropicKey);
       else localStorage.removeItem("cutflow_anthropic_key");
@@ -260,6 +275,8 @@ export function App() {
       else localStorage.removeItem("cutflow_gemini_key");
       if (keys.geminiModel) localStorage.setItem("cutflow_gemini_model", keys.geminiModel);
       else localStorage.removeItem("cutflow_gemini_model");
+      if (keys.higgsfieldKey) localStorage.setItem("cutflow_higgsfield_key", keys.higgsfieldKey);
+      else localStorage.removeItem("cutflow_higgsfield_key");
     } catch {
       // ignore storage errors
     }
@@ -409,17 +426,20 @@ export function App() {
     setIsPlaying(false);
 
     try {
-      const talkingHeadMode =
-        mode === "offline" ? "offline" : mode === "claude" ? "claude" : "auto";
       const res = await runTalkingHeadCut(
         {
           assetId: selectedTalkingHeadAsset.id,
-          mode: talkingHeadMode,
+          mode,
+          autoCaptions: true,
+          autoPunchIn: true,
+          polishAudio: "none",
         },
         {
           anthropicApiKey: anthropicKey,
           anthropicModel,
           anthropicWorkspaceId,
+          geminiApiKey: geminiKey,
+          geminiModel,
         }
       );
       store.loadProject(res.project);
@@ -430,6 +450,71 @@ export function App() {
       setBannerError(err instanceof Error ? err.message : "Auto talking-head cut failed");
     } finally {
       setIsTalkingHeadCutting(false);
+    }
+  };
+
+  const handleImportUrl = async (url: string, kind: "video" | "audio") => {
+    setBannerError(null);
+    setIsImportingUrl(true);
+    try {
+      const asset = await importMediaFromUrl({ url, kind, maxHeight: 1080 });
+      setAssets((prev) => [asset, ...prev]);
+      if (asset.kind !== "audio") {
+        setSelectedVisualIds((prev) => [asset.id, ...prev]);
+      } else {
+        setPendingAudioId(asset.id);
+      }
+    } catch (err) {
+      setBannerError(err instanceof Error ? err.message : "Failed importing media from URL");
+    } finally {
+      setIsImportingUrl(false);
+    }
+  };
+
+  const handleGenerateHiggsfield = async (opts: {
+    prompt: string;
+    kind: "video" | "image";
+    model: string;
+    aspectRatio: AspectRatio;
+  }) => {
+    setBannerError(null);
+    setIsGeneratingHiggsfield(true);
+    try {
+      const res = await generateHiggsfieldMedia(
+        {
+          prompt: opts.prompt,
+          kind: opts.kind,
+          model: opts.model,
+          aspectRatio: opts.aspectRatio,
+          durationSec: 5,
+        },
+        higgsfieldKey
+      );
+      setAssets((prev) => [res.asset, ...prev]);
+      setSelectedVisualIds((prev) => [res.asset.id, ...prev]);
+    } catch (err) {
+      setBannerError(err instanceof Error ? err.message : "Higgsfield generation failed");
+    } finally {
+      setIsGeneratingHiggsfield(false);
+    }
+  };
+
+  const handlePolishAudio = async (asset: MediaAsset) => {
+    setBannerError(null);
+    setPolishingAssetId(asset.id);
+    try {
+      const res = await polishMediaAudio(asset.id, { denoise: "ffmpeg" });
+      setAssets((prev) => [res.asset, ...prev]);
+      if (res.asset.kind !== "audio") {
+        setSelectedVisualIds((prev) => [res.asset.id, ...prev.filter((id) => id !== asset.id)]);
+      }
+      if (res.warnings.length > 0) {
+        setWarnings(res.warnings);
+      }
+    } catch (err) {
+      setBannerError(err instanceof Error ? err.message : "Failed polishing audio");
+    } finally {
+      setPolishingAssetId(null);
     }
   };
 
@@ -686,10 +771,16 @@ export function App() {
                 )
               }
               onUploadFiles={(files) => void handleUploadFiles(files)}
+              onImportUrl={(url, kind) => void handleImportUrl(url, kind)}
+              onGenerateHiggsfield={(opts) => void handleGenerateHiggsfield(opts)}
+              onPolishAudio={(asset) => void handlePolishAudio(asset)}
               onLoadSamplePack={() => void handleLoadDemo()}
               onDeleteAsset={(id) => void handleDeleteAsset(id)}
               uploadProgress={uploadProgress}
               isLoadingSample={isLoadingDemo}
+              isImportingUrl={isImportingUrl}
+              isGeneratingHiggsfield={isGeneratingHiggsfield}
+              polishingAssetId={polishingAssetId}
             />
           )}
 
@@ -935,10 +1026,16 @@ export function App() {
                     )
                   }
                   onUploadFiles={(files) => void handleUploadFiles(files)}
+                  onImportUrl={(url, kind) => void handleImportUrl(url, kind)}
+                  onGenerateHiggsfield={(opts) => void handleGenerateHiggsfield(opts)}
+                  onPolishAudio={(asset) => void handlePolishAudio(asset)}
                   onLoadSamplePack={() => void handleLoadDemo()}
                   onDeleteAsset={(id) => void handleDeleteAsset(id)}
                   uploadProgress={uploadProgress}
                   isLoadingSample={isLoadingDemo}
+                  isImportingUrl={isImportingUrl}
+                  isGeneratingHiggsfield={isGeneratingHiggsfield}
+                  polishingAssetId={polishingAssetId}
                 />
               )}
 
@@ -1025,6 +1122,7 @@ export function App() {
         anthropicWorkspaceId={anthropicWorkspaceId}
         geminiKey={geminiKey}
         geminiModel={geminiModel}
+        higgsfieldKey={higgsfieldKey}
         onSaveKeys={handleSaveKeys}
         health={health}
       />

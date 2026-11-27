@@ -89,7 +89,13 @@ def extract_wav(raw_path: Path, wav_path: Path) -> None:
     subprocess.run(cmd, check=True)
 
 
-def run_whisperx(wav_path: Path, language: str | None) -> dict[str, object]:
+def run_whisperx(
+    wav_path: Path,
+    language: str | None,
+    *,
+    diarize: bool = False,
+    hf_token: str | None = None,
+) -> dict[str, object]:
     import torch
     import whisperx
 
@@ -116,10 +122,28 @@ def run_whisperx(wav_path: Path, language: str | None) -> dict[str, object]:
             dev,
             return_char_alignments=False,
         )
+        diarized = False
+        if diarize:
+            token = (hf_token or os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN") or "").strip()
+            if token:
+                try:
+                    print("[whisperx] Running speaker diarization...")
+                    from whisperx.diarize import DiarizationPipeline  # type: ignore
+
+                    diarize_model = DiarizationPipeline(use_auth_token=token, device=dev)
+                    diarize_segments = diarize_model(audio)
+                    aligned = whisperx.assign_word_speakers(diarize_segments, aligned)
+                    diarized = True
+                except Exception as exc:
+                    print(f"[whisperx] Diarization skipped ({exc})", file=sys.stderr)
+            else:
+                print("[whisperx] Diarization requested but HF_TOKEN is not set; skipping.", file=sys.stderr)
+
         return {
             "language": detected_lang,
             "device": dev,
             "compute_type": ctype,
+            "diarized": diarized,
             "segments": aligned.get("segments", []),
             "word_segments": aligned.get("word_segments", []),
         }
@@ -138,6 +162,7 @@ def flatten_words(segments: list[dict[str, object]]) -> list[dict[str, object]]:
     for seg in segments:
         seg_start = seg.get("start")
         seg_end = seg.get("end")
+        seg_speaker = seg.get("speaker")
         for w in seg.get("words", []):
             entry = {
                 "word": w.get("word", ""),
@@ -146,6 +171,9 @@ def flatten_words(segments: list[dict[str, object]]) -> list[dict[str, object]]:
             }
             if "score" in w:
                 entry["score"] = w["score"]
+            speaker = w.get("speaker") or seg_speaker
+            if speaker:
+                entry["speaker"] = speaker
             words.append(entry)
     return words
 
@@ -156,6 +184,9 @@ def main() -> None:
     parser.add_argument("--language", default=None, help="Optional ISO language code (auto-detected if omitted).")
     parser.add_argument("--out", default=str(WORDS_JSON), help="Output words.json path.")
     parser.add_argument("--wav", default=str(AUDIO_WAV), help="Intermediate 16 kHz mono WAV path.")
+    parser.add_argument("--wav-input", default=None, help="Optional pre-polished WAV to transcribe instead of raw clip audio.")
+    parser.add_argument("--diarize", action="store_true", help="Enable speaker diarization (requires HF_TOKEN).")
+    parser.add_argument("--hf-token", default=None, help="Optional Hugging Face token for speaker diarization.")
     args = parser.parse_args()
 
     raw_path = find_raw_clip(args.raw_clip)
@@ -171,16 +202,20 @@ def main() -> None:
         )
         return
 
-    extract_wav(raw_path, wav_path)
-    out = run_whisperx(wav_path, args.language)
+    audio_source = Path(args.wav_input).expanduser().resolve() if args.wav_input else raw_path
+    extract_wav(audio_source, wav_path)
+    out = run_whisperx(wav_path, args.language, diarize=args.diarize, hf_token=args.hf_token)
     words = flatten_words(out["segments"])
+    low_conf_count = sum(1 for w in words if isinstance(w.get("score"), (int, float)) and float(w["score"]) < 0.55)
 
     payload = {
         "source": sig,
         "language": out["language"],
         "device": out["device"],
         "compute_type": out["compute_type"],
+        "diarized": bool(out.get("diarized")),
         "word_count": len(words),
+        "low_confidence_word_count": low_conf_count,
         "segments": out["segments"],
         "words": words,
     }

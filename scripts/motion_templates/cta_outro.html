@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>HyperFrames CTA Outro</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: {{WIDTH}}px;
+      height: {{HEIGHT}}px;
+      overflow: hidden;
+      background: #090b12;
+      font-family: "Inter", "DejaVu Sans", system-ui, sans-serif;
+      color: #ffffff;
+    }
+    #root {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 10%;
+      background:
+        radial-gradient(circle at 50% 35%, {{ACCENT}}38 0%, transparent 55%),
+        linear-gradient(160deg, #090b12 0%, #0f172a 100%);
+    }
+    .cta-pill {
+      padding: 16px 36px;
+      border-radius: 999px;
+      background: {{ACCENT}};
+      color: #090b12;
+      font-size: calc({{WIDTH}}px * 0.042);
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      box-shadow: 0 12px 34px {{ACCENT}}55;
+      animation: pulsePop 0.5s cubic-bezier(0.2, 1.2, 0.3, 1) forwards;
+    }
+    .title {
+      margin-top: 28px;
+      text-align: center;
+      font-size: calc({{WIDTH}}px * 0.064);
+      font-weight: 900;
+      line-height: 1.1;
+    }
+    .sub {
+      margin-top: 16px;
+      text-align: center;
+      font-size: calc({{WIDTH}}px * 0.032);
+      color: #cbd5e1;
+    }
+    @keyframes pulsePop {
+      from { transform: scale(0.8); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root" data-composition-id="cta-outro" data-start="0" data-duration="{{DURATION}}" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" data-fps="{{FPS}}">
+    <div class="clip cta-pill" data-start="0" data-duration="{{DURATION}}" data-track-index="0">{{BADGE}}</div>
+    <h2 class="clip title" data-start="0.1" data-duration="{{DURATION}}" data-track-index="1">{{TITLE}}</h2>
+    <p class="clip sub" data-start="0.2" data-duration="{{DURATION}}" data-track-index="2">{{SUBTITLE}}</p>
+  </div>
+</body>
+</html>

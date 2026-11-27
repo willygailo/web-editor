@@ -3,7 +3,11 @@ import type {
   AutoEditResponse,
   CutTemplatePreset,
   HealthResponse,
+  HiggsfieldGenerateRequest,
+  HiggsfieldGenerateResponse,
+  ImportUrlRequest,
   MediaAsset,
+  PolishAudioRequest,
   RenderJob,
   RenderRequest,
   SaveTemplateRequest,
@@ -169,6 +173,58 @@ export interface UserAiKeys {
   geminiModel?: string;
 }
 
+export async function importMediaFromUrl(req: ImportUrlRequest): Promise<MediaAsset> {
+  const res = await fetch("/api/media/import-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error || "Failed importing media from URL");
+  }
+  const data = (await res.json()) as { asset: MediaAsset };
+  return data.asset;
+}
+
+export async function polishMediaAudio(
+  assetId: string,
+  req: PolishAudioRequest = { denoise: "ffmpeg" }
+): Promise<{ asset: MediaAsset; engineUsed: string; outputLufs: string | null; warnings: string[] }> {
+  const res = await fetch(`/api/media/${encodeURIComponent(assetId)}/polish-audio`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error || "Failed polishing voice audio");
+  }
+  return res.json();
+}
+
+export async function generateHiggsfieldMedia(
+  req: HiggsfieldGenerateRequest,
+  higgsfieldKey?: string
+): Promise<HiggsfieldGenerateResponse> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (higgsfieldKey?.trim()) {
+    headers["x-higgsfield-key"] = higgsfieldKey.trim();
+  }
+  const res = await fetch("/api/media/generate-higgsfield", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error || "Higgsfield generation failed");
+  }
+  return res.json();
+}
+
 export async function runTalkingHeadCut(
   req: TalkingHeadCutRequest,
   userKeys?: UserAiKeys
@@ -184,6 +240,12 @@ export async function runTalkingHeadCut(
   }
   if (userKeys?.anthropicWorkspaceId?.trim()) {
     headers["x-anthropic-workspace-id"] = userKeys.anthropicWorkspaceId.trim();
+  }
+  if (userKeys?.geminiApiKey?.trim()) {
+    headers["x-gemini-api-key"] = userKeys.geminiApiKey.trim();
+  }
+  if (userKeys?.geminiModel?.trim()) {
+    headers["x-gemini-model"] = userKeys.geminiModel.trim();
   }
 
   const res = await fetch("/api/projects/talking-head-cut", {

@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
-import { Check, Film, Plus, Sparkles, Trash2, Upload } from "lucide-react";
-import type { MediaAsset } from "@cutflow/shared";
+import { Check, Clapperboard, Film, Link2, Mic, Plus, Sparkles, Trash2, Upload } from "lucide-react";
+import type { AspectRatio, MediaAsset } from "@cutflow/shared";
 
 interface MediaBinProps {
   assets: MediaAsset[];
@@ -8,10 +8,21 @@ interface MediaBinProps {
   onToggleVisual: (id: string) => void;
   onAppendToTimeline: (asset: MediaAsset) => void;
   onUploadFiles: (files: File[]) => void;
+  onImportUrl?: (url: string, kind: "video" | "audio") => void;
+  onGenerateHiggsfield?: (opts: {
+    prompt: string;
+    kind: "video" | "image";
+    model: string;
+    aspectRatio: AspectRatio;
+  }) => void;
+  onPolishAudio?: (asset: MediaAsset) => void;
   onLoadSamplePack: () => void;
   onDeleteAsset: (id: string) => void;
   uploadProgress: number | null;
   isLoadingSample: boolean;
+  isImportingUrl?: boolean;
+  isGeneratingHiggsfield?: boolean;
+  polishingAssetId?: string | null;
 }
 
 export function MediaBin({
@@ -20,13 +31,26 @@ export function MediaBin({
   onToggleVisual,
   onAppendToTimeline,
   onUploadFiles,
+  onImportUrl,
+  onGenerateHiggsfield,
+  onPolishAudio,
   onLoadSamplePack,
   onDeleteAsset,
   uploadProgress,
   isLoadingSample,
+  isImportingUrl = false,
+  isGeneratingHiggsfield = false,
+  polishingAssetId = null,
 }: MediaBinProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [urlInput, setUrlInput] = useState("");
+  const [urlKind, setUrlKind] = useState<"video" | "audio">("video");
+  const [hfOpen, setHfOpen] = useState(false);
+  const [hfPrompt, setHfPrompt] = useState("");
+  const [hfKind, setHfKind] = useState<"video" | "image">("video");
+  const [hfModel, setHfModel] = useState("kling");
+  const [hfAspect, setHfAspect] = useState<AspectRatio>("9:16");
 
   const visualAssets = assets.filter((a) => a.kind !== "audio");
   const uploadedAudioCount = assets.filter((a) => a.kind === "audio" && !a.isBuiltIn).length;
@@ -95,6 +119,142 @@ export function MediaBin({
                 style={{ width: `${uploadProgress}%` }}
               />
             </div>
+          </div>
+        )}
+
+        {onImportUrl && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!urlInput.trim() || isImportingUrl) return;
+              onImportUrl(urlInput.trim(), urlKind);
+              setUrlInput("");
+            }}
+            className="flex items-center gap-1.5 pt-1"
+          >
+            <div className="relative flex min-w-0 flex-1 items-center">
+              <Link2 className="pointer-events-none absolute left-2.5 size-3.5 text-slate-400" aria-hidden="true" />
+              <input
+                type="url"
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+                placeholder="Paste URL (yt-dlp video/audio)..."
+                aria-label="Import media from URL"
+                className="w-full rounded-lg border border-slate-700/80 bg-[#0d111a] py-1.5 pr-2 pl-8 text-[11px] text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
+              />
+            </div>
+            <select
+              value={urlKind}
+              onChange={(e) => setUrlKind(e.target.value as "video" | "audio")}
+              aria-label="URL download type"
+              className="rounded-lg border border-slate-700/80 bg-[#0d111a] px-1.5 py-1.5 text-[11px] text-slate-200 focus:border-cyan-400 focus:outline-none"
+            >
+              <option value="video">MP4</option>
+              <option value="audio">Audio</option>
+            </select>
+            <button
+              type="submit"
+              disabled={!urlInput.trim() || isImportingUrl}
+              className="shrink-0 rounded-lg bg-indigo-500/20 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-200 ring-1 ring-indigo-400/40 transition hover:bg-indigo-500/30 disabled:opacity-40"
+            >
+              {isImportingUrl ? "..." : "Import"}
+            </button>
+          </form>
+        )}
+
+        {onGenerateHiggsfield && (
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => setHfOpen((v) => !v)}
+              className="inline-flex w-full items-center justify-between rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-fuchsia-200 transition hover:bg-fuchsia-500/20"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <Clapperboard className="size-3.5" aria-hidden="true" />
+                <span>AI Gen B-Roll (Higgsfield)</span>
+              </span>
+              <span className="text-[10px] opacity-75">{hfOpen ? "Hide" : "Open"}</span>
+            </button>
+            {hfOpen && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!hfPrompt.trim() || isGeneratingHiggsfield) return;
+                  onGenerateHiggsfield({
+                    prompt: hfPrompt.trim(),
+                    kind: hfKind,
+                    model: hfModel,
+                    aspectRatio: hfAspect,
+                  });
+                  setHfPrompt("");
+                }}
+                className="mt-1.5 flex flex-col gap-1.5 rounded-xl border border-slate-800 bg-[#0d111a] p-2"
+              >
+                <input
+                  type="text"
+                  value={hfPrompt}
+                  onChange={(e) => setHfPrompt(e.target.value)}
+                  placeholder="Describe B-roll shot (e.g. Neon Manila skyline dolly shot)..."
+                  aria-label="Higgsfield AI generation prompt"
+                  className="w-full rounded-lg border border-slate-700/80 bg-[#090b10] px-2.5 py-1.5 text-[11px] text-slate-100 placeholder:text-slate-500 focus:border-fuchsia-400 focus:outline-none"
+                />
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <select
+                    value={hfKind}
+                    onChange={(e) => {
+                      const next = e.target.value as "video" | "image";
+                      setHfKind(next);
+                      setHfModel(next === "image" ? "soul" : "kling");
+                    }}
+                    aria-label="Higgsfield media kind"
+                    className="rounded-lg border border-slate-700/80 bg-[#090b10] px-1.5 py-1 text-[11px] text-slate-200"
+                  >
+                    <option value="video">Video</option>
+                    <option value="image">Image</option>
+                  </select>
+                  <select
+                    value={hfModel}
+                    onChange={(e) => setHfModel(e.target.value)}
+                    aria-label="Higgsfield model preset"
+                    className="flex-1 rounded-lg border border-slate-700/80 bg-[#090b10] px-1.5 py-1 text-[11px] text-slate-200"
+                  >
+                    {hfKind === "video" ? (
+                      <>
+                        <option value="kling">Kling 2.1</option>
+                        <option value="seedance">Seedance Pro</option>
+                        <option value="veo">Veo 3</option>
+                        <option value="minimax">MiniMax</option>
+                        <option value="dop">Higgsfield DoP</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="soul">Higgsfield Soul</option>
+                        <option value="seedream">Seedream v3</option>
+                        <option value="nano-banana">Nano Banana</option>
+                      </>
+                    )}
+                  </select>
+                  <select
+                    value={hfAspect}
+                    onChange={(e) => setHfAspect(e.target.value as AspectRatio)}
+                    aria-label="Higgsfield aspect ratio"
+                    className="rounded-lg border border-slate-700/80 bg-[#090b10] px-1.5 py-1 text-[11px] text-slate-200"
+                  >
+                    <option value="9:16">9:16</option>
+                    <option value="16:9">16:9</option>
+                    <option value="1:1">1:1</option>
+                    <option value="4:5">4:5</option>
+                  </select>
+                  <button
+                    type="submit"
+                    disabled={!hfPrompt.trim() || isGeneratingHiggsfield}
+                    className="rounded-lg bg-fuchsia-500/25 px-2.5 py-1 text-[11px] font-bold text-fuchsia-100 ring-1 ring-fuchsia-400/50 transition hover:bg-fuchsia-500/35 disabled:opacity-40"
+                  >
+                    {isGeneratingHiggsfield ? "Generating..." : "Generate"}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         )}
       </div>
@@ -166,6 +326,18 @@ export function MediaBin({
                   </button>
 
                   <div className="card-reveal-actions absolute top-1.5 right-1.5 flex gap-1">
+                    {onPolishAudio && asset.kind === "video" && asset.hasAudio && (
+                      <button
+                        type="button"
+                        onClick={() => onPolishAudio(asset)}
+                        disabled={polishingAssetId === asset.id}
+                        aria-label={`Polish voice audio for ${asset.originalName}`}
+                        title="Polish Voice (Denoise + -14 LUFS Mastering)"
+                        className="inline-flex items-center justify-center rounded-full bg-emerald-400 p-1 text-slate-950 shadow disabled:opacity-50"
+                      >
+                        <Mic className="size-3" aria-hidden="true" />
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => onAppendToTimeline(asset)}

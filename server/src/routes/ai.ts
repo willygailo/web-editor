@@ -102,6 +102,8 @@ export function registerAiRoutes(
     const anthropicHeader = request.headers["x-anthropic-api-key"];
     const anthropicModelHeader = request.headers["x-anthropic-model"];
     const workspaceHeader = request.headers["x-anthropic-workspace-id"];
+    const geminiHeader = request.headers["x-gemini-api-key"];
+    const geminiModelHeader = request.headers["x-gemini-model"];
 
     try {
       const result = await runTalkingHeadAutoCut({
@@ -114,6 +116,8 @@ export function registerAiRoutes(
           typeof anthropicModelHeader === "string" ? anthropicModelHeader : undefined,
         userAnthropicWorkspaceId:
           typeof workspaceHeader === "string" ? workspaceHeader : undefined,
+        userGeminiKey: typeof geminiHeader === "string" ? geminiHeader : undefined,
+        userGeminiModel: typeof geminiModelHeader === "string" ? geminiModelHeader : undefined,
       });
       return result;
     } catch (err) {

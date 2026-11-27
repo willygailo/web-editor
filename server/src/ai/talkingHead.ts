@@ -8,6 +8,7 @@ import {
   type MediaAsset,
   type TalkingHeadCutRequest,
   type TalkingHeadCutResponse,
+  type TextOverlay,
 } from "@cutflow/shared";
 import { REPO_ROOT, type ServerConfig } from "../config.js";
 import { runProcess } from "../media/exec.js";
@@ -85,6 +86,8 @@ export async function runTalkingHeadAutoCut(params: {
   userAnthropicKey?: string;
   userAnthropicModel?: string;
   userAnthropicWorkspaceId?: string;
+  userGeminiKey?: string;
+  userGeminiModel?: string;
 }): Promise<TalkingHeadCutResponse> {
   const {
     request,
@@ -94,6 +97,8 @@ export async function runTalkingHeadAutoCut(params: {
     userAnthropicKey,
     userAnthropicModel,
     userAnthropicWorkspaceId,
+    userGeminiKey,
+    userGeminiModel,
   } = params;
 
   if (asset.kind !== "video") {
@@ -113,13 +118,19 @@ export async function runTalkingHeadAutoCut(params: {
   const wordsJsonPath = path.join(cacheDir, `${asset.id}.words.json`);
   const wavPath = path.join(cacheDir, `${asset.id}_16k.wav`);
   const cutsJsonPath = path.join(cacheDir, `${asset.id}.cuts.json`);
+  const overlaysJsonPath = path.join(cacheDir, `${asset.id}.overlays.json`);
 
   const transcribeScript = path.join(REPO_ROOT, "scripts", "transcribe.py");
   const chooseCutsScript = path.join(REPO_ROOT, "scripts", "choose_cuts.py");
+  const refineCutsScript = path.join(REPO_ROOT, "scripts", "refine_cuts.py");
+  const captionsScript = path.join(REPO_ROOT, "scripts", "generate_captions.py");
   const whisperxPy = resolveWhisperxPython();
+  const sysPy = resolveSystemPython();
 
   let segments: CutSegment[] = [];
-  let sourceUsed: "claude" | "offline" = "offline";
+  let sourceUsed: "claude" | "gemini" | "offline" = "offline";
+  let waveformRefined = false;
+  let overlays: TextOverlay[] = [];
 
   if (whisperxPy && fs.existsSync(transcribeScript) && fs.existsSync(chooseCutsScript)) {
     const tArgs = [
@@ -142,9 +153,11 @@ export async function runTalkingHeadAutoCut(params: {
       const apiKey = (userAnthropicKey || config.anthropicApiKey || "").trim();
       const model = (userAnthropicModel || config.anthropicModel || "claude-sonnet-5-5").trim();
       const workspaceId = (userAnthropicWorkspaceId || config.anthropicWorkspaceId || "").trim();
+      const geminiKey = (userGeminiKey || config.geminiApiKey || "").trim();
+      const geminiModel = (userGeminiModel || config.geminiModel || "gemini-4-hydrogen").trim();
 
       const cRes = await runProcess(
-        resolveSystemPython(),
+        sysPy,
         [
           chooseCutsScript,
           wordsJsonPath,
@@ -161,11 +174,33 @@ export async function runTalkingHeadAutoCut(params: {
             ANTHROPIC_API_KEY: apiKey,
             ANTHROPIC_MODEL: model,
             ANTHROPIC_WORKSPACE_ID: workspaceId,
+            GEMINI_API_KEY: geminiKey,
+            GEMINI_MODEL: geminiModel,
           },
         }
       );
 
       if (cRes.code === 0 && fs.existsSync(cutsJsonPath)) {
+        // Automatic waveform RMS & zero-crossing boundary refinement
+        if (fs.existsSync(refineCutsScript)) {
+          const refAudio = fs.existsSync(wavPath) ? wavPath : filePath;
+          const rRes = await runProcess(
+            sysPy,
+            [
+              refineCutsScript,
+              cutsJsonPath,
+              "--audio",
+              refAudio,
+              "--words",
+              wordsJsonPath,
+            ],
+            { timeoutMs: 60_000 }
+          );
+          if (rRes.code === 0) {
+            waveformRefined = true;
+          }
+        }
+
         const parsedCuts = JSON.parse(fs.readFileSync(cutsJsonPath, "utf8")) as {
           segments?: CutSegment[];
         };
@@ -174,13 +209,54 @@ export async function runTalkingHeadAutoCut(params: {
         );
         try {
           const summary = JSON.parse(cRes.stdout) as {
-            source?: "claude" | "offline";
+            source?: "claude" | "gemini" | "offline";
             warning?: string | null;
           };
-          sourceUsed = summary.source === "claude" ? "claude" : "offline";
+          sourceUsed =
+            summary.source === "claude"
+              ? "claude"
+              : summary.source === "gemini"
+                ? "gemini"
+                : "offline";
           if (summary.warning) warnings.push(summary.warning);
         } catch {
           // ignore non-JSON stdout noise
+        }
+
+        // Generate edited-timeline word-synced CutFlow caption overlays
+        if (request.autoCaptions !== false && segments.length > 0 && fs.existsSync(captionsScript)) {
+          const w = asset.width ?? 1080;
+          const h = asset.height ?? 1920;
+          const fpsStr = String(Math.round(asset.fps ?? 30));
+          const capRes = await runProcess(
+            sysPy,
+            [
+              captionsScript,
+              "--words",
+              wordsJsonPath,
+              "--cuts",
+              cutsJsonPath,
+              "--fps",
+              fpsStr,
+              "--width",
+              String(w),
+              "--height",
+              String(h),
+              "--out-overlays",
+              overlaysJsonPath,
+            ],
+            { timeoutMs: 30_000 }
+          );
+          if (capRes.code === 0 && fs.existsSync(overlaysJsonPath)) {
+            try {
+              const parsedOv = JSON.parse(fs.readFileSync(overlaysJsonPath, "utf8")) as {
+                overlays?: TextOverlay[];
+              };
+              overlays = parsedOv.overlays ?? [];
+            } catch {
+              // ignore overlay parse issue
+            }
+          }
         }
       } else {
         warnings.push(
@@ -204,6 +280,7 @@ export async function runTalkingHeadAutoCut(params: {
   }
 
   const fps = Math.min(60, Math.max(24, Math.round(asset.fps ?? 30)));
+  const usePunchIn = request.autoPunchIn !== false;
   const clips: ClipSlot[] = segments.map((seg, idx) => {
     const startSec = Number(Math.max(0, Math.min(asset.durationSec - 0.1, seg.start)).toFixed(3));
     const endSec = Number(
@@ -222,6 +299,10 @@ export async function runTalkingHeadAutoCut(params: {
       muteOriginalAudio: false,
       volume: 1,
       reversed: false,
+      transform:
+        usePunchIn && idx % 2 === 1
+          ? { scale: 1.08, offsetX: 0, offsetY: -0.04, rotationDeg: 0 }
+          : undefined,
       label: seg.text ? seg.text.slice(0, 48) : `Take ${idx + 1}`,
     };
   });
@@ -236,14 +317,14 @@ export async function runTalkingHeadAutoCut(params: {
     id: `proj-th-${Date.now()}`,
     title: `${path.parse(asset.originalName).name} (Auto Cut)`.slice(0, 120),
     templateId: "talking-head-auto",
-    promptUsed: "Auto Talking-Head Jump-Cut (WhisperX + AI)",
-    aiSummary: `Kept ${clips.length} jump-cut segments (${editedDurationSec.toFixed(1)}s from ${originalDurationSec.toFixed(1)}s; trimmed ${removedSec.toFixed(1)}s of dead air/fillers).`,
-    modeUsed: sourceUsed === "claude" ? "claude" : "offline",
+    promptUsed: "Pro AI Talking-Head Jump-Cut (WhisperX + Waveform Snap + Captions)",
+    aiSummary: `Kept ${clips.length} jump-cut segments (${editedDurationSec.toFixed(1)}s from ${originalDurationSec.toFixed(1)}s; trimmed ${removedSec.toFixed(1)}s${waveformRefined ? ", waveform-snapped" : ""}${overlays.length ? `, +${overlays.length} captions` : ""}).`,
+    modeUsed: sourceUsed,
     aspectRatio: inferAspectRatio(asset),
     fps,
     targetDurationSec: Number(Math.min(180, Math.max(0.4, editedDurationSec)).toFixed(2)),
     clips,
-    overlays: [],
+    overlays,
     stickers: [],
     audioTracks: [],
   };
@@ -255,6 +336,8 @@ export async function runTalkingHeadAutoCut(params: {
     editedDurationSec,
     removedSec,
     source: sourceUsed,
+    waveformRefined,
+    captionsAdded: overlays.length,
     warnings,
   };
 }

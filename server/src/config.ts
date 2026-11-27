@@ -51,7 +51,23 @@ export interface ServerConfig {
   anthropicApiKey: string;
   anthropicModel: string;
   anthropicWorkspaceId: string;
+  higgsfieldKey: string;
+  higgsfieldDefaultModel: string;
+  higgsfieldMcpConfigured: boolean;
   maxUploadBytes: number;
+}
+
+function detectHiggsfieldMcpConfigured(): boolean {
+  const mcpPath = path.join(REPO_ROOT, ".mcp.json");
+  if (!fs.existsSync(mcpPath)) return false;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(mcpPath, "utf8")) as {
+      mcpServers?: { higgsfield?: { url?: string } };
+    };
+    return Boolean(parsed?.mcpServers?.higgsfield?.url);
+  } catch {
+    return false;
+  }
 }
 
 export function getConfig(): ServerConfig {
@@ -90,6 +106,15 @@ export function getConfig(): ServerConfig {
     anthropicApiKey: (process.env.ANTHROPIC_API_KEY || "").trim(),
     anthropicModel: (process.env.ANTHROPIC_MODEL || "claude-sonnet-5-5").trim(),
     anthropicWorkspaceId: (process.env.ANTHROPIC_WORKSPACE_ID || "").trim(),
+    higgsfieldKey: (() => {
+      const direct = (process.env.HF_KEY || "").trim();
+      if (direct.includes(":")) return direct;
+      const id = (process.env.HF_API_KEY_ID || "").trim();
+      const secret = (process.env.HF_API_KEY_SECRET || "").trim();
+      return id && secret ? `${id}:${secret}` : "";
+    })(),
+    higgsfieldDefaultModel: (process.env.HF_DEFAULT_VIDEO_MODEL || "kling").trim(),
+    higgsfieldMcpConfigured: detectHiggsfieldMcpConfigured(),
     maxUploadBytes: Math.max(10, maxUploadMb) * 1024 * 1024,
   };
 }
