@@ -87,9 +87,15 @@
   - **Gemini Multimodal (`gemini-4-hydrogen`)**: Analyzes uploaded video proxies, images, beats, and speech via `@google/genai` `Interactions API`.
   - **Offline Smart Engine**: Works with **zero API keys** using `ffprobe`, scene highlight detection, `silencedetect`, PCM beat/energy peak analysis, auto-SFX, and English/Taglish rules.
 
-### 🎙️ 100% Automatic AI Talking-Head Jump-Cut Editor (WhisperX + Claude)
-- **1-Click Web Button (`Auto Jump-Cut`)**: Select any uploaded talking-head video clip and click **Auto Jump-Cut** in the AI bar (`POST /api/projects/talking-head-cut`) to transcribe with local **WhisperX `large-v3`** (cached per clip), remove dead air, fillers (`um`, `uh`, Tagalog/Taglish hesitations), false starts, and retakes using **Claude AI** (with automatic offline word-timestamp fallback), and populate **individual trimmable clips** on the timeline.
-- **Drop-and-Forget Folder Watcher (`pnpm auto-watch`)**: Run `pnpm auto-watch` (or one-shot `pnpm auto-edit`) and drop raw talking-head videos into `raw/`. The pipeline automatically probes exact FPS/orientation, transcribes once (never duplicates), computes non-overlapping padded cuts (`+0.08 s` / `-0.12 s`), renders a frame-accurate H.264/AAC MP4 (`-fps_mode passthrough`) to `output/<name>_cut.mp4` and `./cut.mp4`, and runs frame-for-frame `ffprobe` verification. Pass `--review` (`python3 scripts/auto_edit.py --review`) whenever you want to inspect and approve `transcript/cuts.json` before rendering.
+### 🎙️ Pro AI Talking-Head, Voice Polish & Generative B-Roll Studio
+- **1-Click Web Button (`Auto Jump-Cut`)**: Select any talking-head video clip and click **Auto Jump-Cut** (`POST /api/projects/talking-head-cut`) to transcribe once with local **WhisperX `large-v3`**, strip dead air, fillers (`um`, `uh`, isolated Tagalog/Taglish stumbles), false starts, and retakes using **Claude / Gemini / Offline**, snap cut edges onto quiet **PCM waveform RMS valleys & zero-crossings**, and drop **individual trimmable clips** onto the timeline with **auto-generated word-synced captions** and **alternating `1.08×` punch-in zoom**.
+- **URL Ingest (`yt-dlp`) & 1-Click Voice Polish (`ClearerVoice-Studio`)**: Paste any video/audio URL straight into the Clips bin (**Import URL** → `POST /api/media/import-url` or `pnpm ingest-url`), and click the **Mic (Polish Voice)** action (`POST /api/media/:id/polish-audio`) for broadcast EQ, compression, optional `ClearerVoice-Studio` (`MossFormer2_SE_48K` / `FRCRN_SE_16K`) AI denoising, and **2-pass EBU R128 `-14 LUFS`** loudness mastering.
+- **Generative AI B-Roll (`Higgsfield MCP` & Cloud API)**: Connect Higgsfield's managed remote MCP (`https://mcp.higgsfield.ai/mcp`) via `pnpm connect-higgsfield` (OAuth login, zero API key needed) or use the **AI Gen B-Roll (Higgsfield)** drawer in the Clips bin (`POST /api/media/generate-higgsfield`) with *Kling, Seedance, Veo, MiniMax, DoP, Soul,* and *Seedream*. Plan timed cutaways with `pnpm plan-broll`, generate with `pnpm gen-broll`, and composite as full-frame **cutaways** or **PiP** cards over continuous dialogue (`--broll-manifest`).
+- **Motion Graphics (`HyperFrames`), Karaoke Captions & Automated Edit QA**:
+  - Generate edited-timeline `.srt` & safe-zone word-highlighted Karaoke `.ass` captions (`scripts/generate_captions.py`), plus deterministic HTML/CSS/JS intros, lower-thirds, and CTA outros via `heygen-com/hyperframes` (`scripts/render_motion.py`, with FFmpeg offline fallback).
+  - Run `pnpm auto-edit` (or continuous `pnpm auto-watch` on `raw/`) with optional `--polish fast|studio`, `--captions karaoke|minimal`, `--punch-in 1.08`, `--look natural|warm|cinematic|punchy`, `--lut`, `--bgm auto`, `--platform tiktok|reels|shorts|youtube|ig_feed`, `--motion-gfx`, `--broll-plan`, `--export-nle fcpxml,edl,cutflow`, and `--review`.
+  - Every render runs **Automated Edit QA** (`scripts/verify_edit.py` → `transcript/<stem>.qa_report.json`): frame-for-frame `ffprobe` match, loudness `LUFS`/`TP`, splice boundary RMS/click audit, `blackdetect`/`freezedetect`, and optional `--script-check` round-trip WhisperX playback diff.
+- **Cross-Platform NLE Connectors & Pro Prompt v2**: Bootstrap `Adobe_Premiere_Pro_MCP` (pinned `v1.2.3`), macOS `SpliceKit` (live Final Cut Pro MCP), `Higgsfield MCP`, and `ClearerVoice-Studio` via `scripts/setup_connectors.py`, or grab the copy-pasteable setup prompt in [`docs/PRO_STARTER_PROMPT.md`](./docs/PRO_STARTER_PROMPT.md).
 
 ### 📱 Phone & Laptop PWA
 - **Phone**: CapCut-style single-row scrollable bottom tool bar (`AI Magic`, `Clips`, `Audio`, `Templates`, `Edit Clip`, `Adjust`, `Text`, `Stickers`), compact preview stage, safe-area insets, and **Add to Home Screen**.
@@ -100,11 +106,11 @@
 ## 🎯 How to Use
 
 1. **Start the Studio**: Run `pnpm dev` and open `http://localhost:5173` on laptop (or `http://<your-laptop-lan-ip>:5173` on phone over the same Wi-Fi).
-2. **Add Media**: Drag & drop videos/photos/audio into **Clips**, or tap **Demo Clips** to generate 3 animated sample videos immediately.
+2. **Add Media (3 Ways)**: Drag & drop videos/photos/audio into **Clips**, paste a URL in **Import URL (`yt-dlp`)**, generate custom B-roll via **AI Gen B-Roll (Higgsfield)**, or tap **Demo Clips** to generate 3 animated sample videos immediately.
 3. **Create an Edit (3 Ways)**:
    - **Use a Cut Template**: Open **Templates → Use Template**, assign your clips to each blueprint slot, edit the hook caption & beat track, and click **Apply**.
    - **AI Auto-Edit**: Select clips in the bin, pick a **Platform** target pill (`Auto`, `TikTok 9:16`, `IG Reels`, `IG Feed 4:5`, `YT Shorts`, `YT 16:9`, `Promo 1:1`), write a prompt (e.g. *"Gawa ka ng hype 15s TikTok viral hook edit with pop captions"*), choose `Auto` / `Claude 5.5` / `Gemini` / `Offline`, and click **Auto Edit**.
-   - **1-Click Auto Talking-Head Jump-Cut**: Select a talking-head clip and click **Auto Jump-Cut** to automatically remove dead air, fillers, and retakes into trimmable timeline clips — or run `pnpm auto-watch` and drop raw clips straight into `raw/` for hands-free `./cut.mp4` exports.
+   - **1-Click Pro Talking-Head Jump-Cut**: Optionally click the **Mic (Polish Voice)** icon on a talking-head clip for `-14 LUFS` broadcast mastering, then click **Auto Jump-Cut** to remove dead air, fillers, and retakes with waveform-snapped cuts, auto-captions, and `1.08×` punch-in zoom — or run `pnpm auto-edit` / `pnpm auto-watch` on `raw/` for hands-free finished MP4 + FCPXML/EDL + Edit QA exports.
 4. **Fine-Tune Like CapCut**:
    - **Timeline**: Scrub to any timestamp and press **Split** (`S`), drag clip edges to trim duration, tap transition badges between clips, or click **Snap Beats**.
    - **Music & SFX**: Layer BGM, click **Listen** to check **Song Start** or tap **Skip Intro →** to jump past quiet intros, insert SFX hits at the playhead, record a **Voiceover**, or extract audio from a video clip.
@@ -149,22 +155,23 @@
 flowchart LR
     UI["Phone &amp; Laptop PWA (React 19 + Undo/Redo Store)"]
     API["Fastify 5 Server (:3001)"]
-    Probe["FFprobe, Scene Highlights, Waveform Peaks &amp; Silence Analyzer"]
-    AI["Pro Social Director (Claude 5.5 / Gemini 4 / Offline 3-Act + SFX)"]
-    TPL["Built-in &amp; Custom Cut Templates Store"]
+    Ingest["Ingest &amp; Gen (Upload / yt-dlp URL / Higgsfield AI B-Roll)"]
+    Voice["Voice &amp; Speech (ClearerVoice -14 LUFS + WhisperX + Waveform Snap)"]
+    AI["Pro AI Directors (Claude 5.5 / Gemini 4 / Offline 3-Act + B-Roll Planner)"]
+    TPL["Built-in &amp; Custom Cut Templates + HyperFrames Motion Templates"]
     EDL["Unified CutProject EDL (Zod + Sanitizer)"]
     Preview["Browser 2-Channel Canvas + Interactive Text/Sticker Stage"]
-    Render["FFmpeg Filter Graph (Reverse, Color EQ, Xfade, SFX Mix, ASS Subtitles) -&gt; MP4"]
+    Render["FFmpeg Finishing (Punch-In, LUT, B-Roll Cutaways, Ducked BGM, Karaoke ASS) -&gt; MP4 / FCPXML / EDL"]
+    QA["Automated Edit QA (ffprobe, Splice RMS, Black/Freeze &amp; Round-Trip Script Diff)"]
 
-    UI -->|"Upload / Voiceover / Extract Audio"| API
-    API --> Probe
-    UI -->|"Auto-Edit / Auto-Captions"| API
-    API --> AI
+    UI --> Ingest --> API
+    API --> Voice --> AI
     API --> TPL
     AI --> EDL
     TPL --> EDL
     EDL --> Preview
     UI -->|"Export 720p / 1080p MP4"| Render
+    Render --> QA
     Render -->|"SSE Progress + Download"| UI
 ```
 
@@ -178,12 +185,17 @@ Runs natively on **Windows (10/11)**, **macOS (Apple Silicon & Intel)**, and **L
 - **Node.js** `>= 22`
 - **pnpm** (`corepack enable` or `npm install -g pnpm`)
 - **FFmpeg** & **ffprobe** available in `PATH` (or configured via `FFMPEG_PATH` / `FFPROBE_PATH`)
-- **Optional (for WhisperX Talking-Head Auto Jump-Cut)**: `uv` + reusable Python 3.11 WhisperX venv:
-  ```bash
-  uv venv ~/.cache/video-editor/whisperx-venv --python 3.11
-  uv pip install --python ~/.cache/video-editor/whisperx-venv/bin/python whisperx
-  ```
-  *(On Windows Git Bash, use `Scripts/python.exe` instead of `bin/python`.)*
+- **Optional (for Pro Talking-Head, URL Ingest, Voice Polish & Generative B-Roll)**:
+  - `uv` + reusable Python 3.11 WhisperX venv:
+    ```bash
+    uv venv ~/.cache/video-editor/whisperx-venv --python 3.11
+    uv pip install --python ~/.cache/video-editor/whisperx-venv/bin/python whisperx
+    ```
+    *(On Windows Git Bash, use `Scripts/python.exe` instead of `bin/python`.)*
+  - `yt-dlp` for URL downloads (`pnpm ingest-url` & Web **Import URL**).
+  - Optional `ClearerVoice-Studio` isolated venv (`python3 scripts/setup_connectors.py clearvoice`) for `--polish studio` (`MossFormer2_SE_48K`).
+  - Optional **Higgsfield Remote MCP** (`pnpm connect-higgsfield` → registers `https://mcp.higgsfield.ai/mcp` in `.mcp.json` with OAuth login, zero API key needed).
+  - Run `pnpm doctor` anytime to verify all local tools, Python venvs, GPU status, and MCP connectors.
 
 <details>
 <summary><strong>💻 OS-Specific Install Commands (Windows, macOS &amp; Linux)</strong></summary>
@@ -245,9 +257,16 @@ CutFlow AI works **even without any API key** using the built-in **Offline Smart
    # --- Option 2: Google Gemini ---
    GEMINI_API_KEY=AIza-your-gemini-key-here
    GEMINI_MODEL=gemini-4-hydrogen
+
+   # --- Option 3: Higgsfield Cloud API (Optional — for headless B-roll CLI & Web UI AI Gen) ---
+   # Use HF_KEY=key_id:key_secret OR HF_API_KEY_ID + HF_API_KEY_SECRET
+   # (Skip if using the OAuth Remote MCP connector via `pnpm connect-higgsfield`)
+   HF_KEY=
+   HF_DEFAULT_VIDEO_MODEL=kling
    ```
    - **Claude (`ANTHROPIC_MODEL`)**: Accepts `sk-ant-api03-*` (standard API keys) or `sk-ant-usr-*` (workspace is auto-discovered if `ANTHROPIC_WORKSPACE_ID` is blank). Set `ANTHROPIC_MODEL` to any valid Anthropic Messages model ID supported by your key (default: `claude-sonnet-5-5`).
-   - **Gemini (`GEMINI_MODEL`)**: Accepts Google AI Studio keys (`AIza...`). Used for multimodal video/image analysis in **Auto Edit** with your configured `GEMINI_MODEL` (default: `gemini-4-hydrogen`), and powers **Auto Captions** (`/api/media/:id/transcribe` using `gemini-4-hydrogen`).
+   - **Gemini (`GEMINI_MODEL`)**: Accepts Google AI Studio keys (`AIza...`). Used for multimodal video/image analysis in **Auto Edit**, **Auto Jump-Cut** cut selection, **B-Roll Planning**, and **Auto Captions**.
+   - **Higgsfield (`HF_KEY` or Remote MCP)**: Set `HF_KEY=key_id:key_secret` (from [cloud.higgsfield.ai](https://cloud.higgsfield.ai/api-keys)) to unlock **AI Gen B-Roll (Higgsfield)** in the CutFlow Web UI and `pnpm gen-broll` CLI — or run `pnpm connect-higgsfield` to use `https://mcp.higgsfield.ai/mcp` via OAuth with your Higgsfield account credits.
 3. **Restart the dev server** so `.env` changes take effect (if `pnpm dev` is already running, press `Ctrl + C` and re-run):
    ```bash
    pnpm dev
@@ -269,10 +288,11 @@ Use this if you want to enter or override API keys or Model IDs directly from th
    - **Anthropic Workspace ID** (`wrkspc_...`, leave blank to auto-detect for `sk-ant-usr-*` keys)
    - **Optional Browser Gemini Key** (`AIza...`)
    - **Gemini Model ID** (optional override for server `GEMINI_MODEL`)
+   - **Optional Browser Higgsfield API Key** (`key_id:key_secret`, sent via `x-higgsfield-key`)
 3. Click **Save**.
 
 > [!NOTE]
-> - **Priority & Privacy**: Keys and Model IDs saved in **Settings** stay only in your browser's `localStorage` and are sent via request headers (`x-anthropic-api-key`, `x-anthropic-model`, `x-anthropic-workspace-id`, `x-gemini-api-key`, `x-gemini-model`), overriding server `.env` defaults per request. Leave any field blank to fall back cleanly to `.env` (or **Offline** mode when no key is set).
+> - **Priority & Privacy**: Keys and Model IDs saved in **Settings** stay only in your browser's `localStorage` and are sent via request headers (`x-anthropic-api-key`, `x-anthropic-model`, `x-anthropic-workspace-id`, `x-gemini-api-key`, `x-gemini-model`, `x-higgsfield-key`), overriding server `.env` defaults per request. Leave any field blank to fall back cleanly to `.env` (or **Offline** mode when no key is set).
 
 ---
 
@@ -283,10 +303,13 @@ Full reference of variables supported in `.env` (see [`.env.example`](./.env.exa
 | Variable | Default | Description |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | *(empty)* | Optional Anthropic key (`sk-ant-api03-*` or `sk-ant-usr-*`) |
-| `ANTHROPIC_MODEL` | `claude-sonnet-5-5` | Anthropic model ID used for AI Auto-Edit |
+| `ANTHROPIC_MODEL` | `claude-sonnet-5-5` | Anthropic model ID used for AI Auto-Edit & Talking-Head Cuts |
 | `ANTHROPIC_WORKSPACE_ID` | *(auto)* | Optional workspace ID (auto-discovered for `sk-ant-usr-*` keys) |
 | `GEMINI_API_KEY` | *(empty)* | Optional Google Gemini API key |
-| `GEMINI_MODEL` | `gemini-4-hydrogen` | Gemini model ID used for AI Auto-Edit and Auto Captions |
+| `GEMINI_MODEL` | `gemini-4-hydrogen` | Gemini model ID used for AI Auto-Edit, Jump-Cuts & Auto Captions |
+| `HF_KEY` | *(empty)* | Optional combined Higgsfield Cloud API key (`key_id:key_secret`) |
+| `HF_API_KEY_ID` / `HF_API_KEY_SECRET` | *(empty)* | Optional split Higgsfield Cloud API credentials (alternative to `HF_KEY`) |
+| `HF_DEFAULT_VIDEO_MODEL` | `kling` | Default Higgsfield video model preset (`kling`, `seedance`, `veo`, `minimax`, `dop`) |
 | `PORT` | `3001` | Fastify API server port |
 | `HOST` | `0.0.0.0` | Bind host (`0.0.0.0` enables mobile LAN access) |
 | `STORAGE_DIR` | `./data` | Upload, proxy, built-in audio/SFX, template, and render directory |
@@ -304,9 +327,14 @@ Full reference of variables supported in `.env` (see [`.env.example`](./.env.exa
 | `pnpm build` | Builds `@cutflow/shared`, `@cutflow/server`, and `@cutflow/web` (`dist/`) |
 | `pnpm test` | Runs Vitest suites across `shared` and `server` (includes real FFmpeg MP4 render & E2E API tests) |
 | `pnpm typecheck` | Runs strict TypeScript checks across all workspace packages |
-| `pnpm auto-edit` | Runs one-shot automatic WhisperX + Claude talking-head jump-cut on unprocessed clips in `raw/` (`--review` for approval pause) |
+| `pnpm doctor` | Checks `ffmpeg`, `ffprobe`, `uv`, `git`, `node >= 22`, Python 3.11, `yt-dlp`, venvs, & MCP connectors |
+| `pnpm ingest-url -- <URL>` | Downloads video or audio via `yt-dlp` directly into `raw/` |
+| `pnpm connect-higgsfield` | Registers Higgsfield Remote MCP (`https://mcp.higgsfield.ai/mcp`) in `.mcp.json` |
+| `pnpm plan-broll` | Generates timed Higgsfield AI B-roll cues (`transcript/broll_plan.json`) from `cuts.json` |
+| `pnpm gen-broll` | Executes single-shot or batch `--plan` Higgsfield Cloud API B-roll generation |
+| `pnpm auto-edit` | Runs full Pro talking-head pipeline (`--url`, `--polish`, `--captions`, `--punch-in`, `--look`, `--bgm`, `--broll-plan`, `--motion-gfx`, `--export-nle`, `--script-check`, `--review`) |
 | `pnpm auto-watch` | Watches `raw/` continuously and auto-edits newly dropped talking-head clips to `output/<name>_cut.mp4` + `./cut.mp4` |
-| `python3 -m unittest scripts/test_auto_editor.py` | Runs Python unit & frame-accurate FFmpeg render tests for the talking-head auto-editor scripts |
+| `python3 -m unittest -v scripts/test_auto_editor.py` | Runs Python unit & integration tests (waveform snap, `-14 LUFS` polish, B-roll cutaway/PiP, captions, EDL, QA) |
 
 ---
 
@@ -318,16 +346,20 @@ Full reference of variables supported in `.env` (see [`.env.example`](./.env.exa
 ```text
 .
 ├── shared/    # @cutflow/shared — Zod EDL schemas, timeline layout math, template blueprints, sticker catalog, API DTOs
-├── server/    # @cutflow/server — Fastify API, ffprobe/waveform analysis, custom templates store, Claude/Gemini/Offline directors, talking-head bridge, FFmpeg compiler
-├── web/       # @cutflow/web    — Responsive React 19 PWA studio, Undo/Redo store, interactive Canvas preview, multi-track timeline, drawers & modals
-└── scripts/   # Python AI talking-head pipeline — WhisperX transcription, Claude/offline jump-cut selector, frame-accurate FFmpeg builder & raw/ folder watcher
+├── server/    # @cutflow/server — Fastify API, ffprobe/waveform analysis, URL ingest, voice polish, Higgsfield AI gen, Claude/Gemini/Offline directors, FFmpeg compiler
+├── web/       # @cutflow/web    — Responsive React 19 PWA studio, Undo/Redo store, interactive Canvas preview, multi-track timeline, URL import, Higgsfield B-roll drawer
+├── scripts/   # Pro Python AI video pipeline — yt-dlp ingest, ClearerVoice -14 LUFS audio polish, WhisperX transcription, waveform boundary snap, karaoke captions, HyperFrames motion templates, Higgsfield B-roll planner/generator, NLE connectors (Premiere MCP, SpliceKit FCP, Higgsfield MCP), & Edit QA
+└── docs/      # Demo preview assets & upgraded v2 Pro AI Video Editor setup prompt (PRO_STARTER_PROMPT.md)
 ```
 
 ### API Endpoints
 
-- `GET /api/health` — Server FFmpeg & AI provider readiness
+- `GET /api/health` — Server FFmpeg, Claude, Gemini, & Higgsfield (Cloud API / Remote MCP) readiness
 - `GET /api/media` — List uploaded & built-in clips, BGM, and SFX assets
 - `POST /api/media/upload` — Multipart video/image/audio/voiceover upload + `ffprobe`, beat, & visual scene highlight analysis
+- `POST /api/media/import-url` — Download video/audio from URL via `yt-dlp` into the media library
+- `POST /api/media/generate-higgsfield` — Generate AI B-roll video or image via Higgsfield Cloud API (`kling`, `seedance`, `veo`, `minimax`, `dop`, `soul`, `seedream`)
+- `POST /api/media/:id/polish-audio` — Denoise (`ClearerVoice-Studio` / FFmpeg) + 2-pass EBU R128 `-14 LUFS` voice mastering
 - `POST /api/media/sample-pack` — Generate 3 animated demo video clips via FFmpeg
 - `GET /api/media/:id/stream` — HTTP `206` byte-range streaming for smooth mobile seeking
 - `GET /api/media/:id/thumb` — Cached JPEG thumbnail
@@ -339,7 +371,7 @@ Full reference of variables supported in `.env` (see [`.env.example`](./.env.exa
 - `POST /api/templates` — Save a custom Cut Template preset
 - `DELETE /api/templates/:id` — Delete a saved custom template
 - `POST /api/projects/auto-edit` — Generate or refine a platform-targeted `CutProject` EDL with SFX cues & social captions (`auto`, `claude`, `gemini`, `offline`)
-- `POST /api/projects/talking-head-cut` — Transcribe via local WhisperX `large-v3` + auto jump-cut dead air, fillers & retakes (Claude AI + offline fallback) into individual trimmable timeline clips
+- `POST /api/projects/talking-head-cut` — Transcribe via local WhisperX `large-v3` + auto jump-cut (`claude`, `gemini`, `offline`) + waveform boundary snap + edited-timeline captions + alternating `1.08×` punch-in zoom
 - `POST /api/render` — Enqueue server-side FFmpeg MP4 render (`720p` or `1080p`)
 - `GET /api/render/:id` / `GET /api/render/:id/events` — Poll or stream render job progress via SSE
 - `GET /api/render/:id/download` — Download rendered MP4

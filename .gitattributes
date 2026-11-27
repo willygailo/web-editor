@@ -1,16 +1,59 @@
 # Enforce consistent line endings across Windows, macOS, and Linux
 * text=auto eol=lf
 
-# Binary media & font assets
+# Explicit text formats (scripts, motion templates, NLE exports, subtitles, docs)
+*.py text eol=lf
+*.sh text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.json text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.fcpxml text eol=lf
+*.edl text eol=lf
+*.srt text eol=lf
+*.ass text eol=lf
+*.vtt text eol=lf
+*.cube text eol=lf
+
+# Binary media, font, native connector, and model weight assets
 *.png binary
 *.jpg binary
 *.jpeg binary
 *.gif binary
 *.webp binary
+*.ico binary
 *.mp4 binary
+*.mov binary
+*.m4v binary
+*.mkv binary
+*.webm binary
+*.avi binary
+*.mts binary
+*.m2ts binary
 *.m4a binary
 *.wav binary
 *.mp3 binary
+*.aac binary
+*.ogg binary
+*.flac binary
 *.ttf binary
+*.otf binary
 *.woff binary
 *.woff2 binary
+*.dylib binary
+*.so binary
+*.dll binary
+*.pt binary
+*.pth binary
+*.onnx binary
+*.safetensors binary
+*.ckpt binary
+*.bin binary
+*.zip binary

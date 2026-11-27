@@ -19,21 +19,48 @@ tmp/
 .env.*
 !.env.example
 
-# Python bytecode & local environments
+# Python bytecode, caches & local environments
 __pycache__/
 *.py[cod]
 *$py.class
 .venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
 
-# AI Talking-Head Auto-Editor working directories & outputs
+# AI Talking-Head & Pro Studio Editor working directories, connectors & outputs
 raw/
 transcript/
 output/
 vendor/
 cut.mp4
 cut.fcpxml
+cut.edl
+*.fcpxml
+*.edl
 *.fcpbundle/
 .mcp.json
+.hyperframes/
+hyperframes-snapshots/
+*.words.json
+*.cuts.json
+*.polish.json
+*.qa_report.json
+*.broll_plan.json
+*.overlays.json
+
+# AI model weights (WhisperX / ClearerVoice-Studio cached locally if ever placed in repo)
+*.pt
+*.pth
+*.onnx
+*.safetensors
+*.ckpt
+
+# yt-dlp partial / temporary download artifacts
+*.part
+*.ytdl
+*.ytdl.*
 
 # Runtime media storage, proxies, built-in audio/stickers, and metadata
 data/
@@ -55,6 +82,8 @@ gemini-*.mp4
 *.mkv
 *.avi
 *.webm
+*.mts
+*.m2ts
 *.m4a
 *.wav
 *.mp3
